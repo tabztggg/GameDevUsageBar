@@ -11,7 +11,10 @@ static class WebsiteSessionChecks
         File.WriteAllText(Path.Combine(profiles,"profiles.ini"),$"[Profile0]\nName=Test\nIsRelative=1\nPath=Profiles/test\n[Profile1]\nName=Custom\nIsRelative=0\nPath={custom}\n[InstallTest]\nDefault=Profiles/test\n");
         void Check(bool condition){if(!condition)throw new Exception("Website session check failed.");}
         yield return ("Firefox discovery supports explicit relative and custom profiles without reading cookies",()=>{
-            var found=WebsiteSession.Profiles(profiles);Check(found.Length==2&&found[0].Directory==relative&&found[1].Directory==custom);return Task.CompletedTask;
+            var found=WebsiteSession.Profiles(profiles);
+            // Hosted Windows runners may expose TEMP through an 8.3 alias.
+            // Compare the canonical paths returned by discovery, not spelling.
+            Check(found.Length==2&&StringComparer.OrdinalIgnoreCase.Equals(found[0].Directory,Path.GetFullPath(relative))&&StringComparer.OrdinalIgnoreCase.Equals(found[1].Directory,Path.GetFullPath(custom)));return Task.CompletedTask;
         });
         yield return ("Firefox import isolates website, expiry, path and container with a read-only database",()=>{
             var file=Path.Combine(relative,"cookies.sqlite");Create(file);

@@ -25,7 +25,9 @@ $records=@($assets | ForEach-Object {
     [ordered]@{file=[IO.Path]::GetFileName($_);bytes=(Get-Item -LiteralPath $_).Length;sha256=(Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant()}
 })
 $manifest=Join-Path $release 'package-manifest.json'
-[ordered]@{schema_version=1;app='GameDevUsageBar';version=$version;platform='windows';architecture='x64';self_contained=$true;signed=$false;assets=$records} | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifest -Encoding utf8
+$buildVersion=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $published 'GameDevUsageBar.exe')).ProductVersion
+$sourceCommit=if($buildVersion -match '^\d+\.\d+\.\d+\+([a-fA-F0-9]{40})$'){$Matches[1].ToLowerInvariant()}else{$null}
+[ordered]@{schema_version=1;app='GameDevUsageBar';version=$version;source_commit=$sourceCommit;platform='windows';architecture='x64';self_contained=$true;signed=$false;assets=$records} | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifest -Encoding utf8
 @($assets)+@($manifest) | ForEach-Object {'{0}  {1}' -f (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant(),[IO.Path]::GetFileName($_)} | Set-Content -LiteralPath (Join-Path $release 'SHA256SUMS.txt') -Encoding utf8
 Write-Host "Release assets ready: $release"
 Write-Output $release

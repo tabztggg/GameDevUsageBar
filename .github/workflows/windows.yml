@@ -21,7 +21,9 @@ jobs:
       - name: Set isolated verification directory
         shell: pwsh
         run: |
-          $qa=Join-Path $env:TEMP "WorkBuddy-Tasks/work/ci-$env:GITHUB_RUN_ID/workspace"
+          "TEMP=$env:RUNNER_TEMP" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "TMP=$env:RUNNER_TEMP" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $qa=Join-Path $env:RUNNER_TEMP "WorkBuddy-Tasks/work/ci-$env:GITHUB_RUN_ID/workspace"
           "GAMEDEVUSAGEBAR_QA_ROOT=$qa" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Locked restore, build, behavior checks and publish
         shell: pwsh
