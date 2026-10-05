@@ -43,6 +43,15 @@ jobs:
           $compiler=Get-ChildItem -Path "${env:ProgramFiles(x86)}/Inno Setup */ISCC.exe","$env:ProgramFiles/Inno Setup */ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
           if(-not $compiler){choco install innosetup --yes --no-progress --limit-output; if($LASTEXITCODE -ne 0){throw 'Inno Setup install failed.'}; $compiler=Get-ChildItem -Path "${env:ProgramFiles(x86)}/Inno Setup */ISCC.exe","$env:ProgramFiles/Inno Setup */ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName}
           if(-not $compiler){throw 'Inno compiler unavailable.'}
+          $chinese=Join-Path (Split-Path $compiler) 'Languages/ChineseSimplified.isl'
+          if(-not (Test-Path -LiteralPath $chinese)){
+            # Inno 6 distributions omit this translation. Use the exact official file
+            # shipped by Inno 7.1.0, preserving its copyright and translator notices.
+            Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/jrsoftware/issrc/7d634620f1d1caca6c76e8398da7133153db9e7b/Files/Languages/ChineseSimplified.isl' -OutFile $chinese
+            if((Get-FileHash -LiteralPath $chinese -Algorithm SHA256).Hash -ne 'e0b0b350e2245f3c5e65586dfe43d574f6e7f06f2261149aba284954b3fc9a8d'){
+              throw 'Official Chinese installer translation hash mismatch.'
+            }
+          }
           "INNO_COMPILER=$compiler" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Package and verify isolated install, upgrade and uninstall
         shell: pwsh
