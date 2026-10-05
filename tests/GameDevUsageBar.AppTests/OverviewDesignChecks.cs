@@ -85,7 +85,21 @@ internal static class OverviewDesignChecks
                         var scroll=Visuals<ScrollViewer>(overview).Single(s=>s.Content is FrameworkElement {Name:"DashboardHost"});
                         var serviceViews=Visuals<FrameworkElement>(overview).Where(v=>(v is OverviewCardView || v is OverviewRowView)&&v.IsVisible&&v.DataContext is CardModel m&&ids.Contains(m.Id)).ToArray();
                         Assert(serviceViews.Length==ids.Length,"wide overview omitted one of seven service views");
-                        foreach(var service in serviceViews){var bounds=service.TransformToAncestor(scroll).TransformBounds(new Rect(service.RenderSize));Assert(bounds.Top>=-1&&bounds.Bottom<=scroll.ViewportHeight+1,"wide overview needs scrolling to show service: "+((CardModel)service.DataContext).Id+" bottom="+bounds.Bottom+" viewport="+scroll.ViewportHeight);}
+                        // Windows may clamp this native HWND to a small hosted
+                        // desktop. Keep the full-size no-scroll assertion, and
+                        // verify scroll reachability when the host is smaller.
+                        var fullSize=overview.ActualWidth>=1260&&overview.ActualHeight>=890;
+                        foreach(var service in serviceViews){
+                            var bounds=service.TransformToAncestor(scroll).TransformBounds(new Rect(service.RenderSize));
+                            Assert(bounds.Top>=-1&&bounds.Bottom<=scroll.ExtentHeight+1,"overview service lies outside its scroll extent");
+                            if(fullSize)Assert(bounds.Bottom<=scroll.ViewportHeight+1,"full-size overview needs scrolling to show service: "+((CardModel)service.DataContext).Id);
+                        }
+                        if(!fullSize){
+                            scroll.ScrollToBottom();await Idle();
+                            var last=serviceViews.Last();var bounds=last.TransformToAncestor(scroll).TransformBounds(new Rect(last.RenderSize));
+                            Assert(bounds.Bottom<=scroll.ViewportHeight+1&&bounds.Top>=-1,"last service cannot be reached on a small desktop");
+                            scroll.ScrollToTop();await Idle();
+                        }
                     }
                 }
             }
