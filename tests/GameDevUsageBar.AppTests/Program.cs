@@ -30,8 +30,43 @@ internal static class Program
         var app=new System.Windows.Application {ShutdownMode=ShutdownMode.OnExplicitShutdown};
         app.Resources.MergedDictionaries.Add(new ResourceDictionary {Source=new Uri("pack://application:,,,/GameDevUsageBar;component/Themes/Resources.xaml")});ThemeService.Apply();
         SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext());
-        app.Dispatcher.BeginInvoke(async ()=>{if(args.Contains("--multi-account")){try{await MultiAccountUiChecks.Run(Environment.GetEnvironmentVariable("GAMEDEVUSAGEBAR_QA_ROOT")??Path.Combine(Path.GetTempPath(),"WorkBuddy-Tasks","work","gamedevusagebar-multiaccount-20261004","workspace"));await NativeHostChecks.Run(Environment.GetEnvironmentVariable("GAMEDEVUSAGEBAR_QA_ROOT")??Path.Combine(Path.GetTempPath(),"WorkBuddy-Tasks","work","gamedevusagebar-multiaccount-20261004","workspace"));}catch(Exception e){failed++;Console.WriteLine(e);}finally{app.Shutdown(failed==0?0:1);app.Dispatcher.BeginInvokeShutdown(DispatcherPriority.Background);}}else if(args.Contains("--overview-design")){try{await OverviewDesignChecks.Run(Environment.GetEnvironmentVariable("GAMEDEVUSAGEBAR_QA_ROOT")!);}catch(Exception e){failed++;Console.WriteLine(e);}finally{app.Shutdown(failed==0?0:1);app.Dispatcher.BeginInvokeShutdown(DispatcherPriority.Background);}}else if(args.Contains("--compact-design")){try{var qa=Environment.GetEnvironmentVariable("GAMEDEVUSAGEBAR_QA_ROOT")!;await CompactDesignChecks.Run(qa);await AdditionalSurfaceChecks.Run(qa);await StripDesignChecks.Run(qa);await TransparencyChecks.Run(qa);}catch(Exception e){failed++;Console.WriteLine(e);}finally{app.Shutdown(failed==0?0:1);app.Dispatcher.BeginInvokeShutdown(DispatcherPriority.Background);}}else await RunAsync(app,args.Contains("--interactive"));});
-        Dispatcher.Run();return failed==0 ? 0 : 1;
+        app.Dispatcher.BeginInvoke(async () =>
+        {
+            if (!args.Any(a => a is "--multi-account" or "--overview-design" or "--compact-design"))
+            {
+                await RunAsync(app, args.Contains("--interactive"));
+                return;
+            }
+            try
+            {
+                var qa = Environment.GetEnvironmentVariable("GAMEDEVUSAGEBAR_QA_ROOT")
+                    ?? Path.Combine(Path.GetTempPath(), "WorkBuddy-Tasks", "work", "gamedevusagebar-multiaccount-20261004", "workspace");
+                Directory.CreateDirectory(qa);
+                if (args.Contains("--multi-account"))
+                {
+                    await MultiAccountUiChecks.Run(qa);
+                    await NativeHostChecks.Run(qa);
+                }
+                else if (args.Contains("--overview-design")) await OverviewDesignChecks.Run(qa);
+                else
+                {
+                    await CompactDesignChecks.Run(qa);
+                    await AdditionalSurfaceChecks.Run(qa);
+                    await StripDesignChecks.Run(qa);
+                    await TransparencyChecks.Run(qa);
+                }
+            }
+            catch (Exception e) { failed++; Console.WriteLine(e); }
+            finally { await ShutdownAsync(app); }
+        });
+        return app.Run();
+    }
+    private static async Task ShutdownAsync(System.Windows.Application app)
+    {
+        // Closed windows and popups enqueue resource invalidation. Drain that work while
+        // Application.Resources is still alive; Application.Shutdown owns dispatcher exit.
+        await Dispatcher.Yield(DispatcherPriority.SystemIdle);
+        app.Shutdown(failed == 0 ? 0 : 1);
     }
     private static async Task RunAsync(System.Windows.Application app,bool interactive)
     {
@@ -363,8 +398,7 @@ internal static class Program
             sentinel?.Close();tray?.Dispose();hub?.Dispose();surfaces?.Dispose();
             if(preferences is not null){await preferences.FlushAsync();preferences.Dispose();}
             if(host is not null)await host.DisposeAsync();
-            app.Shutdown(failed==0?0:1);
-            app.Dispatcher.BeginInvokeShutdown(DispatcherPriority.Background);
+            await ShutdownAsync(app);
         }
     }
     private static IEnumerable<T> FindVisual<T>(DependencyObject obj) where T:DependencyObject
