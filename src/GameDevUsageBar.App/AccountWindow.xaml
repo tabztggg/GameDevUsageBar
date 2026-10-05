@@ -1,0 +1,26 @@
+<Window x:Class="GameDevUsageBar.App.AccountWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:loc="clr-namespace:GameDevUsageBar.App.Presentation" Style="{StaticResource {x:Type Window}}" Title="{loc:Loc Lba30aa8829}" Width="540" Height="630" MinWidth="440" MinHeight="540" WindowStartupLocation="CenterOwner">
+ <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="28">
+  <TextBlock x:Name="Heading" FontSize="26" FontWeight="SemiBold"/><TextBlock x:Name="Description" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="0,8,0,18"/>
+  <Border Background="{DynamicResource BannerBrush}" CornerRadius="8" Padding="14" Margin="0,0,0,18"><TextBlock x:Name="EndpointText" TextWrapping="Wrap" Foreground="#BBCAEF"/></Border>
+  <StackPanel x:Name="Fields">
+   <StackPanel x:Name="SourceFields" Visibility="Collapsed" Margin="0,0,0,16"><TextBlock x:Name="SourceTitle"/><ComboBox x:Name="SourceSelector" SelectedValuePath="Id" SelectionChanged="Source_Changed" Margin="0,6,0,8"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}"/></DataTemplate></ComboBox.ItemTemplate></ComboBox><TextBlock x:Name="NativeHint" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource MutedBrush}"/></StackPanel>
+   <StackPanel x:Name="ProjectFields" Visibility="Collapsed"><TextBlock x:Name="ProjectTitle"/><TextBox x:Name="ProjectInput" MaxLength="63"/></StackPanel>
+   <StackPanel x:Name="OrganizationFields" Visibility="Collapsed"><TextBlock x:Name="OrganizationTitle"/><TextBox x:Name="OrganizationInput" MaxLength="36"/></StackPanel>
+   <StackPanel x:Name="AccountIdFields" Visibility="Collapsed"><TextBlock x:Name="AccountIdTitle"/><TextBox x:Name="AccountIdInput" MaxLength="100"/></StackPanel>
+   <StackPanel x:Name="RegionFields" Visibility="Collapsed" Margin="0,0,0,16"><TextBlock Text="{loc:Loc Lb36d369efa}"/><ComboBox x:Name="RegionSelector" SelectedValuePath="Id" SelectionChanged="Region_Changed" Margin="0,6,0,8" AutomationProperties.Name="{loc:Loc Lb36d369efa}"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}"/></DataTemplate></ComboBox.ItemTemplate></ComboBox><TextBlock x:Name="RegionHint" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource MutedBrush}"/></StackPanel>
+   <TextBlock Text="{loc:Loc L19646ef1ab}"/><TextBox x:Name="AccountLabel" MaxLength="60" AutomationProperties.Name="{loc:Loc L19646ef1ab}"/>
+   <StackPanel x:Name="WebsiteFields" Visibility="Collapsed" Margin="0,0,0,16">
+    <TextBlock x:Name="BrowserTitle"/><ComboBox x:Name="BrowserSelector" SelectedValuePath="Id" SelectionChanged="Browser_Changed" Margin="0,6,0,8"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}"/></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+    <StackPanel x:Name="FirefoxFields"><TextBlock x:Name="ProfileTitle"/><ComboBox x:Name="ProfileSelector" DisplayMemberPath="Name" Margin="0,6,0,8"/></StackPanel>
+    <WrapPanel><Button x:Name="OpenLogin" Click="OpenLogin_Click"/><Button x:Name="ImportCookie" Click="ImportCookie_Click"/><Button x:Name="CookieHelp" Click="CookieHelp_Click"/></WrapPanel>
+    <TextBlock x:Name="CookieHint" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="0,8,0,0"/>
+   </StackPanel>
+   <StackPanel x:Name="SecretFields"><TextBlock x:Name="SecretTitle" Text="{loc:Loc Lfac85ccdca}"/><PasswordBox x:Name="SecretInput" MaxLength="8192" AutomationProperties.Name="{loc:Loc L16f0ee47f9}"/><TextBlock Text="{loc:Loc Ld3c4e34bb4}" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,16"/></StackPanel>
+   <StackPanel x:Name="DemoFields" Visibility="Collapsed"><TextBlock Text="{loc:Loc Lb56ff458c3}"/><ComboBox x:Name="Scenario" Margin="0,6,0,16" AutomationProperties.Name="{loc:Loc Lb56ff458c3}"><ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}"/></DataTemplate></ComboBox.ItemTemplate></ComboBox></StackPanel>
+   <TextBlock Text="{loc:Loc L31a3d62061}"/><TextBox x:Name="Interval" MaxLength="3" AutomationProperties.Name="{loc:Loc Le972b57723}"/>
+   <CheckBox x:Name="Enabled" Content="{loc:Loc L997eb1530e}" Margin="0,4,0,14"/>
+  </StackPanel>
+  <TextBlock x:Name="Feedback" TextWrapping="Wrap" Foreground="{DynamicResource AlertBrush}" Margin="0,5,0,12"/>
+  <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button x:Name="Remove" Content="{loc:Loc L946b51ef67}" Click="Remove_Click"/><Button Content="{loc:Loc L7d9eb7acb1}" Click="Close_Click"/><Button x:Name="Save" Content="{loc:Loc Lc75e0a3d6c}" Click="Save_Click" Background="{DynamicResource ActionBrush}"/></StackPanel>
+ </StackPanel></ScrollViewer>
+</Window>

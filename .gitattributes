@@ -1,0 +1,8 @@
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.jpg binary
+# Preserve imported legal text and vector resources byte for byte.
+licenses/** -text -whitespace
+NOTICE-CodexBar.txt -text -whitespace
+src/GameDevUsageBar.App/Assets/ProviderIcons/** -text -whitespace

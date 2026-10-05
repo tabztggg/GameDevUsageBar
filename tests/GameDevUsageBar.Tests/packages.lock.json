@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net10.0-windows7.0": {
+      "gamedevusagebar.core": {
+        "type": "Project"
+      },
+      "gamedevusagebar.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "GameDevUsageBar.Core": "[0.9.0, )"
+        }
+      },
+      "gamedevusagebar.providers": {
+        "type": "Project",
+        "dependencies": {
+          "GameDevUsageBar.Core": "[0.9.0, )"
+        }
+      }
+    },
+    "net10.0-windows7.0/win-x64": {}
+  }
+}

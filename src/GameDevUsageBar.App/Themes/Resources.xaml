@@ -1,0 +1,28 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="Menus.xaml"/></ResourceDictionary.MergedDictionaries><BooleanToVisibilityConverter x:Key="BoolVisibility" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" /><SolidColorBrush x:Key="BackgroundBrush" Color="#10151E" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" /><SolidColorBrush x:Key="PanelBrush" Color="#1A2230" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" /><SolidColorBrush x:Key="TextBrush" Color="#E7EDF7" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" /><SolidColorBrush x:Key="MutedBrush" Color="#9BA9BF" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" /><SolidColorBrush x:Key="EdgeBrush" Color="#2A364A" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" /><Style TargetType="Window" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><Setter Property="Background" Value="{DynamicResource BackgroundBrush}" /><Setter Property="Foreground" Value="{DynamicResource TextBrush}" /><Setter Property="FontFamily" Value="Segoe UI" /><Setter Property="FontSize" Value="14" /></Style><Style TargetType="TextBlock" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><Setter Property="Foreground" Value="{DynamicResource TextBrush}" /></Style><Style TargetType="Button" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><Setter Property="Background" Value="{DynamicResource ButtonBrush}" /><Setter Property="Foreground" Value="{DynamicResource TextBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource EdgeBrush}" /><Setter Property="Padding" Value="14,8" /><Setter Property="Margin" Value="4" /><Setter Property="Cursor" Value="Hand" /><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="7" Padding="{TemplateBinding Padding}" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" /></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource HoverBrush}" /></Trigger><Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value="0.4" /></Trigger><Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource AccentBrush}" /></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style><Style TargetType="TextBox" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><Setter Property="Background" Value="{DynamicResource InputBrush}" /><Setter Property="Foreground" Value="{DynamicResource TextBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource EdgeBrush}" /><Setter Property="Padding" Value="10" /><Setter Property="Margin" Value="0,5,0,12" /><Setter Property="CaretBrush" Value="{DynamicResource TextBrush}" /></Style><Style TargetType="PasswordBox" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><Setter Property="Background" Value="{DynamicResource InputBrush}" /><Setter Property="Foreground" Value="{DynamicResource TextBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource EdgeBrush}" /><Setter Property="Padding" Value="10" /><Setter Property="Margin" Value="0,5,0,12" /></Style><Style TargetType="CheckBox" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><Setter Property="Foreground" Value="{DynamicResource TextBrush}" /><Setter Property="VerticalContentAlignment" Value="Center" /><Setter Property="Margin" Value="10" /></Style>
+ <Style TargetType="ToolTip">
+  <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+  <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+  <Setter Property="BorderBrush" Value="{DynamicResource EdgeBrush}" />
+  <Setter Property="BorderThickness" Value="1" />
+  <Setter Property="Padding" Value="12,8" />
+  <Setter Property="FontFamily" Value="Segoe UI" />
+  <Setter Property="FontSize" Value="12" />
+  <Setter Property="MaxWidth" Value="420" />
+  <Setter Property="Template">
+   <Setter.Value>
+    <ControlTemplate TargetType="ToolTip">
+     <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}" CornerRadius="6">
+      <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" ContentStringFormat="{TemplateBinding ContentStringFormat}" TextElement.Foreground="{TemplateBinding Foreground}">
+       <ContentPresenter.Resources>
+        <Style TargetType="TextBlock">
+         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+         <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+       </ContentPresenter.Resources>
+      </ContentPresenter>
+     </Border>
+    </ControlTemplate>
+   </Setter.Value>
+  </Setter>
+ </Style>
+</ResourceDictionary>

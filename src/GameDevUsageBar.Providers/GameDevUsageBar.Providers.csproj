@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="../GameDevUsageBar.Core/GameDevUsageBar.Core.csproj"/></ItemGroup><ItemGroup Condition="'$(VerifyBannedSymbols)' == 'true'"><Compile Include="../../tools/fixtures/ForbiddenProvider.cs.sample" /></ItemGroup></Project>

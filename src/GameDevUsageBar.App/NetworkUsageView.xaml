@@ -1,0 +1,17 @@
+<UserControl x:Class="GameDevUsageBar.App.NetworkUsageView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource EdgeBrush}" BorderThickness="1" CornerRadius="12" Padding="16">
+  <StackPanel>
+   <TextBlock Text="{Binding Title}" FontSize="18" FontWeight="SemiBold"/>
+   <TextBlock Text="{Binding Adapter}" Margin="0,7,0,0" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap"/>
+   <TextBlock Text="{Binding Notice}" Margin="0,5,0,12" Foreground="{DynamicResource MutedBrush}" FontSize="11" TextWrapping="Wrap"/>
+   <Border BorderBrush="{DynamicResource EdgeBrush}" BorderThickness="0,1,0,1" Padding="0,12">
+    <StackPanel>
+     <DockPanel><TextBlock Text="{Binding Download}" DockPanel.Dock="Right" FontSize="19" FontWeight="SemiBold"/><TextBlock Text="{Binding DownloadLabel}" VerticalAlignment="Center"/></DockPanel>
+     <DockPanel Margin="0,10,0,0"><TextBlock Text="{Binding Upload}" DockPanel.Dock="Right" FontSize="19" FontWeight="SemiBold"/><TextBlock Text="{Binding UploadLabel}" VerticalAlignment="Center"/></DockPanel>
+    </StackPanel>
+   </Border>
+   <TextBlock Text="{Binding Units}" Margin="0,12,0,0" TextWrapping="Wrap" FontSize="10" Foreground="{DynamicResource MutedBrush}"/>
+   <TextBlock Text="{Binding Sampled}" Margin="0,5,0,0" FontSize="10" Foreground="{DynamicResource MutedBrush}"/>
+  </StackPanel>
+ </Border>
+</UserControl>

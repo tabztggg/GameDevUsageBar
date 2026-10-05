@@ -1,0 +1,6 @@
+// Negative build fixture. Excluded unless VerifyBannedSymbols=true; never executed.
+namespace GameDevUsageBar.Providers;
+internal static class ForbiddenProvider
+{
+    internal static string ReadForbiddenFile() => System.IO.File.ReadAllText("never-run");
+}

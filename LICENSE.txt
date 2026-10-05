@@ -1,0 +1,9 @@
+Copyright (c) 2026 GameDevUsageBar authors.
+All rights reserved.
+
+The original GameDevUsageBar source code, documentation, and artwork are not
+currently offered under an open-source license. Publishing this repository
+does not grant an open-source license to the original work.
+
+Third-party components remain governed by their respective licenses and
+notices. See THIRD-PARTY-NOTICES.md, licenses/, and NOTICE-CodexBar.txt.

@@ -1,0 +1,5 @@
+<Project>
+  <Target Name="CheckProviderBoundaries" BeforeTargets="CoreCompile" Condition="'$(MSBuildProjectName)' == 'GameDevUsageBar.Providers'">
+    <Error Condition="$([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('%(Compile.FullPath)')), '\b(HttpClient|SocketsHttpHandler|WebClient|WebRequest|Process|ProcessStartInfo|File|FileInfo|FileStream|StreamReader|StreamWriter|Directory|DirectoryInfo|DllImport|LibraryImport|Registry|GetEnvironmentVariable)\b'))" Text="Provider source uses a forbidden transport, process, file, registry, or credential API: %(Compile.Identity). Use the Core query contract." />
+  </Target>
+</Project>

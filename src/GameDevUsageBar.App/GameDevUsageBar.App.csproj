@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- WPF owns startup; set DPI before its HWNDs are created. WinForms is only the tray wrapper. -->
+  <PropertyGroup><NoWarn>$(NoWarn);WFO0003</NoWarn></PropertyGroup>
+  <PropertyGroup><TargetFramework>net10.0-windows</TargetFramework><OutputType>WinExe</OutputType><UseWPF>true</UseWPF><UseWindowsForms>true</UseWindowsForms><ImplicitUsings>disable</ImplicitUsings><ApplicationManifest>app.manifest</ApplicationManifest><AssemblyName>GameDevUsageBar</AssemblyName></PropertyGroup>
+  <PropertyGroup><ApplicationIcon>Assets/GameDevUsageBar.ico</ApplicationIcon></PropertyGroup>
+  <ItemGroup><Resource Include="Assets/GameDevUsageBar.ico"/></ItemGroup>
+  <ItemGroup><PackageReference Include="Microsoft.Web.WebView2"/></ItemGroup>
+  <ItemGroup><Resource Include="Assets/ProviderIcons/*.svg"/><None Update="Assets/ProviderIcons/LICENSE-CodexBar.txt" CopyToOutputDirectory="PreserveNewest"/></ItemGroup>
+  <ItemGroup><ProjectReference Include="../GameDevUsageBar.Core/GameDevUsageBar.Core.csproj"/><ProjectReference Include="../GameDevUsageBar.Infrastructure/GameDevUsageBar.Infrastructure.csproj"/><ProjectReference Include="../GameDevUsageBar.Providers/GameDevUsageBar.Providers.csproj"/></ItemGroup>
+</Project>

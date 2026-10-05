@@ -1,0 +1,60 @@
+name: Windows build and installer checks
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: global.json
+      - name: Set isolated verification directory
+        shell: pwsh
+        run: |
+          $qa=Join-Path $env:TEMP "WorkBuddy-Tasks/work/ci-$env:GITHUB_RUN_ID/workspace"
+          "GAMEDEVUSAGEBAR_QA_ROOT=$qa" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Locked restore, build, behavior checks and publish
+        shell: pwsh
+        run: ./tools/build.ps1 -Publish -DotnetPath (Get-Command dotnet).Source
+      - name: Account, native-auth and synthetic UI integration
+        shell: pwsh
+        run: |
+          dotnet run --project tests/GameDevUsageBar.AppTests -c Release --no-build -- --multi-account
+          if($LASTEXITCODE -ne 0){throw 'Account integration failed.'}
+          dotnet run --project tests/GameDevUsageBar.AppTests -c Release --no-build -- --overview-design
+          if($LASTEXITCODE -ne 0){throw 'Overview integration failed.'}
+          dotnet run --project tests/GameDevUsageBar.AppTests -c Release --no-build -- --compact-design
+          if($LASTEXITCODE -ne 0){throw 'Compact/strip integration failed.'}
+      - name: Locate installer compiler
+        shell: pwsh
+        run: |
+          $compiler=Get-ChildItem -Path "${env:ProgramFiles(x86)}/Inno Setup */ISCC.exe","$env:ProgramFiles/Inno Setup */ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+          if(-not $compiler){choco install innosetup --yes --no-progress --limit-output; if($LASTEXITCODE -ne 0){throw 'Inno Setup install failed.'}; $compiler=Get-ChildItem -Path "${env:ProgramFiles(x86)}/Inno Setup */ISCC.exe","$env:ProgramFiles/Inno Setup */ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName}
+          if(-not $compiler){throw 'Inno compiler unavailable.'}
+          "INNO_COMPILER=$compiler" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Package and verify isolated install, upgrade and uninstall
+        shell: pwsh
+        run: |
+          ./tools/package-release.ps1 -SkipBuild -InnoCompiler $env:INNO_COMPILER
+          $smoke=./tools/build-installer.ps1 -InnoCompiler $env:INNO_COMPILER -SmokeTest
+          ./tools/Test-WindowsInstaller.ps1 -Package $smoke -ReceiptDirectory (Join-Path $env:GAMEDEVUSAGEBAR_QA_ROOT 'installer')
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: GameDevUsageBar-windows-x64
+          compression-level: 0
+          path: |
+            artifacts/releases/*/*-win-x64-setup.exe
+            artifacts/releases/*/*-win-x64.zip
+            artifacts/releases/*/package-manifest.json
+            artifacts/releases/*/SHA256SUMS.txt
+          if-no-files-found: error

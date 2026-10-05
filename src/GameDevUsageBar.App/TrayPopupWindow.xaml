@@ -1,0 +1,34 @@
+<Window x:Class="GameDevUsageBar.App.TrayPopupWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:loc="clr-namespace:GameDevUsageBar.App.Presentation" xmlns:local="clr-namespace:GameDevUsageBar.App"
+ Title="{loc:Loc Ld88075ad0b}" Style="{StaticResource {x:Type Window}}" Width="400" SizeToContent="Height" WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False" Topmost="True" WindowStartupLocation="Manual" AllowsTransparency="True" Background="Transparent" UseLayoutRounding="True">
+ <Border x:Name="PopupRoot" Background="{DynamicResource BackgroundBrush}" BorderBrush="{DynamicResource EdgeBrush}" BorderThickness="1" CornerRadius="10" Padding="16">
+  <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+   <Grid x:Name="PopupHeader" Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+    <TextBlock Text="GameDevUsageBar" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+    <Button Grid.Column="1" Content="{loc:Loc L3c128b5436}" Click="RefreshAll_Click" FontSize="12" Padding="10,6" Margin="10,0,0,0"/>
+   </Grid>
+   <ScrollViewer x:Name="ContentScroll" Grid.Row="1" MaxHeight="600" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <ScrollViewer.Resources>
+     <Style TargetType="ScrollBar"><Setter Property="Width" Value="10"/><Setter Property="Margin" Value="4,0,0,0"/><Setter Property="Template"><Setter.Value>
+      <ControlTemplate TargetType="ScrollBar"><Track x:Name="PART_Track" Orientation="Vertical" IsDirectionReversed="True">
+       <Track.DecreaseRepeatButton><RepeatButton Command="ScrollBar.PageUpCommand" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent"/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseRepeatButton>
+       <Track.Thumb><Thumb MinHeight="20"><Thumb.Template><ControlTemplate TargetType="Thumb"><Border Background="{DynamicResource EdgeBrush}" CornerRadius="3"/></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
+       <Track.IncreaseRepeatButton><RepeatButton Command="ScrollBar.PageDownCommand" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent"/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.IncreaseRepeatButton>
+      </Track></ControlTemplate>
+     </Setter.Value></Setter></Style>
+    </ScrollViewer.Resources>
+    <StackPanel>
+    <TextBlock x:Name="EmptyMessage" Text="{loc:Loc L7bf081ecad}" TextWrapping="Wrap" Margin="0,8"/>
+    <ItemsControl x:Name="Cards"><ItemsControl.ItemTemplate><DataTemplate><local:CompactCardView Margin="0,0,0,10" ShowActions="True" RefreshRequested="Refresh_Requested" SetupRequested="Setup_Requested"/></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+   </StackPanel></ScrollViewer>
+   <StackPanel x:Name="PopupFooter" Grid.Row="2" Margin="0,4,0,0">
+    <TextBlock x:Name="PendingText" FontSize="10" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8"/>
+    <Border BorderBrush="{DynamicResource EdgeBrush}" BorderThickness="0,1,0,0" Padding="0,10,0,0">
+     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <WrapPanel><Button Content="{loc:Loc Ld4b1ea5708}" Click="Overview_Click" FontSize="12" Padding="7,5" Margin="0,0,5,0"/><Button Content="{loc:Loc L74a883a037}" Click="Settings_Click" FontSize="12" Padding="7,5" Margin="0,0,5,0"/><Button Content="{loc:Loc L7dd7a28c2f}" Click="Widget_Click" FontSize="12" Padding="7,5" Margin="0,0,5,0"/><Button Content="{loc:Loc Ld17d84a604}" Click="Exit_Click" FontSize="12" Padding="7,5" Margin="0"/></WrapPanel>
+      <TextBlock Grid.Column="1" Text="{loc:Loc Esc to close}" FontSize="10" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+     </Grid>
+    </Border>
+   </StackPanel>
+  </Grid>
+ </Border>
+</Window>
