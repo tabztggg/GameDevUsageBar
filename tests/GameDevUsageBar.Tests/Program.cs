@@ -407,6 +407,7 @@ foreach(var item in ClaudeMaintenanceCoordinatorChecks.Cases(root,adapters))awai
 foreach(var item in AccountApiChecks.Cases(root,adapters))await Test(item.Name,item.Run);
 foreach(var item in RuntimeDiagnosticsChecks.Cases())await Test(item.Name,item.Run);
 foreach(var item in RuntimeObserverChecks.Cases())await Test(item.Name,item.Run);
+foreach(var item in StorageReadFailureChecks.Cases(root))await Test(item.Name,item.Run);
 await File.WriteAllTextAsync(Path.Combine(root,"results.json"),JsonSerializer.Serialize(new {passed,failed,results},new JsonSerializerOptions {WriteIndented=true}));
 Console.WriteLine($"RESULT {passed} passed, {failed} failed; {root}");return failed==0?0:1;
 

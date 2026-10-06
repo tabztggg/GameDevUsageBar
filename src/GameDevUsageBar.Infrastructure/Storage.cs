@@ -6,6 +6,26 @@ using GameDevUsageBar.Core;
 
 namespace GameDevUsageBar.Infrastructure;
 
+internal static class StorageReadPath
+{
+    // NotFound can also mean a parent component is a file or a link target is
+    // unavailable. Inspect only path metadata before permitting first-start saves.
+    public static bool IsConfirmedMissing(string path,out Exception? metadataError)
+    {
+        metadataError=null;
+        try{
+            string? candidate=Path.GetFullPath(path);bool target=true;
+            while(candidate is not null){
+                try{
+                    var attributes=File.GetAttributes(candidate);
+                    return !target&&(attributes&FileAttributes.Directory)!=0&&(attributes&FileAttributes.ReparsePoint)==0;
+                }catch(Exception error)when(error is FileNotFoundException or DirectoryNotFoundException){}
+                target=false;candidate=Path.GetDirectoryName(candidate);
+            }
+        }catch(Exception error){metadataError=error;}
+        return false;
+    }
+}
 public static class AtomicFile
 {
     public static async Task WriteAsync(string path, byte[] bytes)
@@ -27,7 +47,6 @@ public sealed class SettingsStore(string root,Action<Exception>? onError=null)
     public bool ReadOnly { get; private set; }
     public async Task<List<AccountConfig>> LoadAsync()
     {
-        if(!File.Exists(path)) return [];
         try
         {
             var settings = JsonSerializer.Deserialize<Settings>(await File.ReadAllTextAsync(path));
@@ -36,6 +55,10 @@ public sealed class SettingsStore(string root,Action<Exception>? onError=null)
             if(settings.Schema<4 && settings.Accounts.GroupBy(c=>c.ProviderId).Any(g=>g.Count()>1))throw new InvalidDataException();
             ValidateAccounts(settings.Accounts);
             return settings.Accounts;
+        }
+        catch(Exception error)when(error is FileNotFoundException or DirectoryNotFoundException) {
+            if(StorageReadPath.IsConfirmedMissing(path,out var metadataError))return [];
+            ErrorObserver.Report(onError,metadataError??error);ReadOnly=true;return [];
         }
         catch(Exception error) {ErrorObserver.Report(onError,error); ReadOnly = true; return []; }
     }
@@ -121,12 +144,15 @@ public sealed class DiskSnapshotStore(string root,Action<Exception>? onError=nul
     public async Task<UsageSnapshot?> LoadAsync(string binding)
     {
         var path = FilePath(binding);
-        if(!File.Exists(path)) return null;
         try
         {
             var cache = JsonSerializer.Deserialize<Cache>(await File.ReadAllTextAsync(path));
             if(cache is not { Schema: 1 } || cache.Value.Binding != binding || cache.Value.Metrics.IsDefault || cache.Value.RetrievedAt > DateTimeOffset.UtcNow.AddMinutes(5)) return null;
             return cache.Value;
+        }
+        catch(Exception error)when(error is FileNotFoundException or DirectoryNotFoundException) {
+            if(StorageReadPath.IsConfirmedMissing(path,out var metadataError))return null;
+            ErrorObserver.Report(onError,metadataError??error);return null;
         }
         catch(Exception error) {ErrorObserver.Report(onError,error); return null; }
     }

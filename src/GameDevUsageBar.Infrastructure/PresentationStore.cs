@@ -11,12 +11,15 @@ public sealed class PresentationStore(string root,Action<Exception>? onError=nul
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true, PropertyNameCaseInsensitive = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     public async Task<PresentationPreferences?> LoadAsync()
     {
-        if(!File.Exists(path)) return null;
         try {
             using var json = JsonDocument.Parse(await File.ReadAllBytesAsync(path).ConfigureAwait(false));
             if(!json.RootElement.TryGetProperty("schema", out var schema) || schema.GetInt32() != 1) throw new InvalidDataException();
             return (JsonSerializer.Deserialize<PresentationPreferences>(json, Options) ?? throw new InvalidDataException()).Validate();
-        } catch(Exception error) {ErrorObserver.Report(onError,error); ReadOnly = true; return null; }
+        } catch(Exception error)when(error is FileNotFoundException or DirectoryNotFoundException) {
+            if(StorageReadPath.IsConfirmedMissing(path,out var metadataError))return null;
+            ErrorObserver.Report(onError,metadataError??error);ReadOnly=true;return null;
+        }
+        catch(Exception error) {ErrorObserver.Report(onError,error); ReadOnly = true; return null; }
     }
     public async Task SaveAsync(PresentationPreferences preferences)
     {
