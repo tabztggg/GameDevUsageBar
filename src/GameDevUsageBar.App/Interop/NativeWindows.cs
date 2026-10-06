@@ -73,7 +73,11 @@ public static class NativeWindows
     public static void PlacePopup(Window window,Point anchor)
     {
         var screen = Forms.Screen.FromPoint(new System.Drawing.Point(anchor.X, anchor.Y));
-        Move(window, screen.WorkingArea.Left + 8, screen.WorkingArea.Top + 8);
+        // A hidden popup only needs a monitor hop when its HWND has a different
+        // DPI context. Re-fitting visible content must never stage the window at
+        // the monitor origin: even a synchronous hop can be painted by DWM.
+        if(!window.IsVisible && Forms.Screen.FromHandle(Handle(window)).DeviceName!=screen.DeviceName)
+            Move(window, screen.WorkingArea.Left + 8, screen.WorkingArea.Top + 8);
         var scale = Scale(window);
         var width = Math.Min(400, screen.WorkingArea.Width / scale);
         var maxHeight = Math.Min(680, screen.WorkingArea.Height / scale);

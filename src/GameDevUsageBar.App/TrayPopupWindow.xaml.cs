@@ -13,7 +13,7 @@ public partial class TrayPopupWindow : Window
     private string? selectedId;
     private NativeWindows.Point? anchor;
     private double areaHeight=680;
-    private bool fitting;
+    private bool fitting,refitPending;
     public bool AllowClose { get; set; }
     public event Action? OverviewRequested, SettingsRequested, WidgetRequested, ExitRequested, DismissRequested;
     public event Action<string>? AccountRequested;
@@ -26,10 +26,8 @@ public partial class TrayPopupWindow : Window
         AddHandler(AccountPickerView.ManageAccountsEvent,new RoutedEventHandler((_,e)=>{if(e.OriginalSource is FrameworkElement {DataContext:CardModel model}){e.Handled=true;ManageAccountsRequested?.Invoke(model.Id);}}));
         view=hub.CreateView(m=>selectedId is null ? m.EligibleForWidget : m.Id==selectedId); Cards.ItemsSource=view;
         hub.Changed+=Changed; Changed();
-        ContentRendered+=(_,_)=> {if(anchor is { } point)PositionAt(point);else FitToWorkArea(Width,areaHeight);};
-        ContentScroll.SizeChanged+=(_,_)=> {
-            if(IsVisible && !fitting)Dispatcher.BeginInvoke(()=> {if(!IsVisible)return;if(anchor is { } point)PositionAt(point);else FitToWorkArea(Width,areaHeight);});
-        };
+        ContentRendered+=(_,_)=>QueueRefit();
+        ContentScroll.SizeChanged+=(_,_)=> {if(!fitting)QueueRefit();};
         KeyDown+=(_,e)=> {if(e.Key==Key.Escape) {e.Handled=true; DismissRequested?.Invoke();}};
         Deactivated+=(_,_)=>DismissRequested?.Invoke();
         Closing+=(_,e)=> {if(!AllowClose) {e.Cancel=true;Hide();}};
@@ -43,9 +41,26 @@ public partial class TrayPopupWindow : Window
         var count=hub.Models.Count(m=>m.Definition.HoldReason!=null);
         PendingText.Text=count>0 ? L.F("{0} sources pending verification",count) : "";
         PendingText.Visibility=count>0 ? Visibility.Visible : Visibility.Collapsed;
-        if(IsVisible && anchor is { } point)Dispatcher.BeginInvoke(()=>PositionAt(point));
+        QueueRefit();
+    }
+    private void QueueRefit()
+    {
+        if(!IsVisible || refitPending || Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)return;
+        refitPending=true;
+        Dispatcher.BeginInvoke(()=> {
+            refitPending=false;
+            if(!IsVisible || Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)return;
+            // A provider/anchor can change again before this callback runs.
+            // Re-fit once using the latest anchor instead of a captured old point.
+            if(anchor is { } point)PositionAt(point);else FitToWorkArea(Width,areaHeight);
+        });
     }
     public void PositionAt(NativeWindows.Point point) {anchor=point;NativeWindows.PlacePopup(this,point);}
+    protected override void OnDpiChanged(DpiScale oldDpi,DpiScale newDpi)
+    {
+        base.OnDpiChanged(oldDpi,newDpi);
+        QueueRefit();
+    }
     public void FitToWorkArea(double width,double maxHeight)
     {
         if(fitting)return;

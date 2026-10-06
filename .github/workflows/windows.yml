@@ -31,6 +31,8 @@ jobs:
       - name: Account, native-auth and synthetic UI integration
         shell: pwsh
         run: |
+          dotnet run --project tests/GameDevUsageBar.AppTests -c Release --no-build -- --popup-positioning
+          if($LASTEXITCODE -ne 0){throw 'Popup positioning integration failed.'}
           dotnet run --project tests/GameDevUsageBar.AppTests -c Release --no-build -- --multi-account
           if($LASTEXITCODE -ne 0){throw 'Account integration failed.'}
           dotnet run --project tests/GameDevUsageBar.AppTests -c Release --no-build -- --overview-design

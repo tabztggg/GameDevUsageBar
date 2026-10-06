@@ -33,7 +33,7 @@ internal static class Program
         SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext());
         app.Dispatcher.BeginInvoke(async () =>
         {
-            if (!args.Any(a => a is "--multi-account" or "--overview-design" or "--compact-design" or "--runtime-lifecycle"))
+            if (!args.Any(a => a is "--multi-account" or "--overview-design" or "--compact-design" or "--runtime-lifecycle" or "--popup-positioning"))
             {
                 await RunAsync(app, args.Contains("--interactive"));
                 return;
@@ -43,7 +43,8 @@ internal static class Program
                 var qa = Environment.GetEnvironmentVariable("GAMEDEVUSAGEBAR_QA_ROOT")
                     ?? Path.Combine(Path.GetTempPath(), "WorkBuddy-Tasks", "work", "gamedevusagebar-multiaccount-20261004", "workspace");
                 Directory.CreateDirectory(qa);
-                if (args.Contains("--runtime-lifecycle")){
+                if (args.Contains("--popup-positioning")) await PopupPositionChecks.Run(qa);
+                else if (args.Contains("--runtime-lifecycle")){
                     await RuntimeLifecycleChecks.Run(qa);
                     await DiagnosticsExportChecks.Run(qa);
                 }
