@@ -35,6 +35,8 @@ Setup always creates a Start menu entry. **Start at Windows logon** is selected 
 
 Open **GameDevUsageBar** from the Start menu or the selected shortcut. Left-click its notification-area icon for the compact usage panel; right-click for overview, accounts, refresh, display settings, widget, and Exit. Closing the overview leaves the tray running. **Exit** stops the app.
 
+For deployment from Codex or another managed command runner, launch through Windows Explorer rather than directly with `Start-Process`. Child processes can inherit the runner's Windows Job and end when that runner is closed. The source helper `tools/start-installed.ps1` uses an existing Explorer folder view, checks the new process's Explorer parent, and refuses a command-process fallback. It requires an open File Explorer window; the Start menu and Windows logon shortcut are the normal desktop launch paths. Job membership alone does not identify the Job owner. See [Microsoft's Job Objects documentation](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects).
+
 Choose **Desktop widget** for the single-row bar. Drag the left grip, use the pin button for topmost, and use **…** for lock and transparency. Choose your language and featured services in Display settings.
 
 For the portable ZIP, extract all files into a stable folder. Do not run the executable directly inside the ZIP or copy only the EXE. The portable app uses the same current-user data directory and single-instance identity as the installed app; run one copy at a time.

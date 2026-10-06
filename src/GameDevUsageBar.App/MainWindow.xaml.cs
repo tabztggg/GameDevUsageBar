@@ -82,7 +82,9 @@ public partial class MainWindow : Window
         ConnectionsSection.Visibility=connections.IsEmpty?Visibility.Collapsed:Visibility.Visible;
         var live=models.Count(m=>m.State.Config.Enabled&&m.Id!="demo"&&m.HasCurrentUsage);
         var configured=models.Count(m=>m.State.Config.Enabled && m.Id!="demo");
-        LayoutNotice.Text=string.Join(" · ",new[]{host.Settings.ReadOnly ? "Account settings could not be read; the original file is preserved." : "",preferences.Notice,localError}.Where(n=>n.Length>0).Select(L.T));
+        var loggingNotice=host.RuntimeLog is {SessionLoggingAvailable:false}
+            ? "Runtime logs could not be saved. Export diagnostics to see the logging failure; usage queries remain available." : "";
+        LayoutNotice.Text=string.Join(" · ",new[]{host.Settings.ReadOnly ? "Account settings could not be read; the original file is preserved." : "",preferences.Notice,localError,loggingNotice}.Where(n=>n.Length>0).Select(L.T));
         OverviewStatus.Text=L.F("{0} enabled · {1} current",configured,live);
         ResizeLayout();
     }
@@ -157,7 +159,9 @@ public partial class MainWindow : Window
         var hasRuntimeLog=host.RuntimeLog is not null;
         var notice=new TextBlock {TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,12)};
         LanguageChoice.Bind(notice,TextBlock.TextProperty,hasRuntimeLog
-            ? "Preview the current diagnostic summary below. Saving creates a ZIP with a filtered JSON summary and bounded runtime logs. Logs are kept in %LOCALAPPDATA%\\GameDevBar\\logs. No account files, cached balances, credentials, or native login files are included. Nothing is uploaded."
+            ? host.RuntimeLog!.SessionLoggingAvailable
+                ? "Preview the current diagnostic summary below. Saving creates a ZIP with a filtered JSON summary and bounded runtime logs. Logs are kept in %LOCALAPPDATA%\\GameDevBar\\logs. No account files, cached balances, credentials, or native login files are included. Nothing is uploaded."
+                : "Runtime logs are unavailable for this session. The ZIP includes safe in-memory diagnostics and may include earlier session logs. No account files or credentials are included. Nothing is uploaded."
             : "Preview the current diagnostic summary below. Runtime logs are unavailable in this session; saving creates a JSON file only. Nothing is uploaded.");
         DockPanel.SetDock(notice,Dock.Top);dock.Children.Add(notice);
         var save=new Button {HorizontalAlignment=HorizontalAlignment.Right}; DockPanel.SetDock(save,Dock.Bottom);

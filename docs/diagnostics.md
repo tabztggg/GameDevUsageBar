@@ -14,6 +14,8 @@ The existing `GameDevBar` data-folder name is retained for compatibility. Logs i
 
 If Windows prevents writes or the disk is unavailable, diagnostics report logging as unavailable. The app does not claim to have saved an event that could not be persisted. A logging failure cannot reliably diagnose a later exit by itself.
 
+The overview warns when the current session cannot save logs. The diagnostic preview reports `FirstLoggingFailure`, `LastLoggingFailure`, and a bounded failure count; the ZIP uses camelCase field names. Each failure contains only a fixed operation stage, exception type, HResult, and UTC time. Messages and paths are excluded. This evidence stays in memory when disk logging fails; a diagnostic ZIP can preserve it and may also contain older session logs. It does not prove that the current session has a complete saved log.
+
 ## Events and their meaning
 
 | Event | What it establishes |

@@ -9,7 +9,8 @@ namespace GameDevUsageBar.Infrastructure;
 public sealed record RuntimeExceptionInfo(string Type, int HResult, string[] Methods, RuntimeExceptionInfo[] Inner);
 public sealed record RuntimeResourceSample(long PrivateBytes,long WorkingSetBytes,long ManagedBytes,int Handles,int Threads,double UptimeSeconds,int CacheFiles,long CacheBytes);
 public sealed record RuntimeLogEntry(int Schema,DateTimeOffset TimestampUtc,DateTimeOffset TimestampLocal,long Sequence,string? SessionId,int ProcessId,string Version,string Event,string? Reason,int? ExitCode,RuntimeExceptionInfo? Exception,RuntimeResourceSample? Resources);
-public sealed record RuntimeDiagnosticsSummary(string Version,bool LoggingAvailable,bool SessionStarted,string PreviousSessionStatus,string? SessionId,int ProcessId,int LogFileCount,long LogBytes,RuntimeResourceSample? LastResources);
+public sealed record RuntimeLoggingFailure(string Stage,string Type,int HResult,DateTimeOffset TimestampUtc);
+public sealed record RuntimeDiagnosticsSummary(string Version,bool LoggingAvailable,bool SessionStarted,string PreviousSessionStatus,string? SessionId,int ProcessId,int LogFileCount,long LogBytes,RuntimeResourceSample? LastResources,RuntimeLoggingFailure? FirstLoggingFailure=null,RuntimeLoggingFailure? LastLoggingFailure=null,int LoggingFailureCount=0);
 
 /// <summary>Bounded local evidence. Exception messages, values, paths and request contents are never logged.</summary>
 public sealed class RuntimeDiagnostics : IDisposable
@@ -39,14 +40,17 @@ public sealed class RuntimeDiagnostics : IDisposable
     private string previousStatus="no_previous_session";
     private long sequence;
     private RuntimeResourceSample? lastResources;
+    private RuntimeLoggingFailure? firstLoggingFailure,lastLoggingFailure;
+    private int loggingFailureCount;
     private sealed record SessionMarker(int Schema,string SessionId,int ProcessId,DateTimeOffset StartedUtc,DateTimeOffset? EndedUtc,string? Reason,int? ExitCode,bool Fatal);
 
     public string LogDirectory {get;}
+    public bool SessionLoggingAvailable=>Volatile.Read(ref loggingAvailable)&&Volatile.Read(ref sessionStarted);
     // A smaller bound is useful for deterministic rotation tests. Production uses the hard maximum.
     public RuntimeDiagnostics(string root,string version,int maximumLogFileBytes=MaximumLogFileBytes)
     {
         try{LogDirectory=Path.Combine(Path.GetFullPath(root),"logs");cacheDirectory=Path.Combine(Path.GetFullPath(root),"cache");diskEnabled=true;}
-        catch{LogDirectory="";cacheDirectory="";loggingAvailable=false;}
+        catch(Exception error){LogDirectory="";cacheDirectory="";CaptureLoggingFailure("normalize_paths",error);}
         this.version=SafeVersion(version);fileLimit=Math.Clamp(maximumLogFileBytes,4096,MaximumLogFileBytes);
     }
     public bool BeginSession()
@@ -54,20 +58,31 @@ public sealed class RuntimeDiagnostics : IDisposable
         lock(gate)
         {
             if(disposed)return false;if(sessionStarted)return true;
+            var stage="prepare_log_directory";
+            var failuresBefore=loggingFailureCount;
             try
             {
                 EnsureDirectory();
                 // Held until Dispose: a second launcher cannot replace the active process's marker.
+                stage="acquire_session_lease";
                 sessionLock=new FileStream(Path.Combine(LogDirectory,"session.lock"),FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None);
+                stage="read_previous_marker";
                 var prior=ReadMarker();
                 previousStatus=prior is null?(File.Exists(MarkerPath)?"unknown":"no_previous_session"):prior.Fatal?"fatal_exception":prior.EndedUtc is null?"incomplete":prior.Reason=="process_exit_without_shutdown"?"unexpected_exit":prior.Reason is "unspecified" or "process_exit_unknown"?"unknown_exit":"graceful_exit";
                 sessionId=Guid.NewGuid().ToString("N");marker=new(1,sessionId,Environment.ProcessId,DateTimeOffset.UtcNow,null,null,null,false);
+                stage="write_session_marker";
                 WriteMarker();sessionStarted=true;
                 if(previousStatus=="incomplete")WriteEntry("previous_session_incomplete","unclean_termination_unknown");
                 else if(previousStatus=="fatal_exception")WriteEntry("previous_session_fatal","fatal_exception");
                 WriteEntry("session_begin",null);return true;
             }
-            catch{loggingAvailable=false;sessionLock?.Dispose();sessionLock=null;return false;}
+            catch(Exception error)
+            {
+                // WriteMarker captures its more precise stage itself. Do not
+                // replace that evidence with a second outer failure record.
+                if(loggingFailureCount==failuresBefore)CaptureLoggingFailure(stage,error);
+                loggingAvailable=false;sessionLock?.Dispose();sessionLock=null;return false;
+            }
         }
     }
     public void Record(string eventName,string? reason=null){lock(gate){if(!disposed)WriteEntry(EventCode(eventName),ReasonCode(reason));}}
@@ -114,8 +129,8 @@ public sealed class RuntimeDiagnostics : IDisposable
         lock(gate)
         {
             int count=0;long bytes=0;
-            try{foreach(var path in LogPaths()){if(File.Exists(path)&&!IsReparse(path)){count++;bytes+=new FileInfo(path).Length;}}}catch{loggingAvailable=false;}
-            return new(version,loggingAvailable,sessionStarted,previousStatus,sessionId,Environment.ProcessId,count,bytes,lastResources);
+            try{foreach(var path in LogPaths()){if(File.Exists(path)&&!IsReparse(path)){count++;bytes+=new FileInfo(path).Length;}}}catch(Exception error){CaptureLoggingFailure("read_log_metadata",error);}
+            return new(version,loggingAvailable,sessionStarted,previousStatus,sessionId,Environment.ProcessId,count,bytes,lastResources,firstLoggingFailure,lastLoggingFailure,loggingFailureCount);
         }
     }
     public IReadOnlyList<RuntimeLogEntry> Recent {get{lock(gate)return recent.ToArray();}}
@@ -181,36 +196,67 @@ public sealed class RuntimeDiagnostics : IDisposable
     }
     private void WriteMarker()
     {
-        EnsureDirectory();var staging=Path.Combine(LogDirectory,"session.tmp");
-        if(File.Exists(staging)&&IsReparse(staging)||File.Exists(MarkerPath)&&IsReparse(MarkerPath))throw new IOException();
-        using(var file=new FileStream(staging,FileMode.Create,FileAccess.Write,FileShare.None)){JsonSerializer.Serialize(file,marker,JsonOptions);file.Flush(true);}
-        File.Move(staging,MarkerPath,true);
+        var stage="prepare_log_directory";
+        try
+        {
+            EnsureDirectory();var staging=Path.Combine(LogDirectory,"session.tmp");
+            stage="validate_marker_targets";
+            if(File.Exists(staging)&&IsReparse(staging)||File.Exists(MarkerPath)&&IsReparse(MarkerPath))throw new IOException();
+            stage="open_marker_staging";
+            using(var file=new FileStream(staging,FileMode.Create,FileAccess.Write,FileShare.None))
+            {
+                stage="serialize_session_marker";JsonSerializer.Serialize(file,marker,JsonOptions);
+                stage="flush_marker_staging";file.Flush(true);
+            }
+            stage="replace_session_marker";File.Move(staging,MarkerPath,true);
+        }
+        catch(Exception error){CaptureLoggingFailure(stage,error);throw;}
     }
     private void WriteEntry(string eventName,string? reason,RuntimeExceptionInfo? exception=null,RuntimeResourceSample? resources=null,int? exitCode=null)
     {
         var utc=DateTimeOffset.UtcNow;var entry=new RuntimeLogEntry(1,utc,utc.ToLocalTime(),++sequence,sessionId,Environment.ProcessId,version,eventName,reason,exitCode,exception,resources);
+        var stage="serialize_log_entry";
         try
         {
             var data=JsonSerializer.SerializeToUtf8Bytes(entry,JsonOptions);
             if(data.Length>MaximumEntryBytes){entry=entry with{Exception=exception is null?null:new(exception.Type,exception.HResult,exception.Methods.Take(4).ToArray(),[])};data=JsonSerializer.SerializeToUtf8Bytes(entry,JsonOptions);}
             recent.Enqueue(entry);while(recent.Count>MaximumRecentEntries)recent.Dequeue();
             if(data.Length+1>fileLimit)return;
-            EnsureDirectory();var logs=LogPaths().ToArray();
+            stage="prepare_log_directory";EnsureDirectory();var logs=LogPaths().ToArray();
             // A launcher that has not begun a primary session may write only when no primary owns the log lease.
             // The lease covers rotation too, so a duplicate cannot delete or displace primary evidence.
+            stage="acquire_transient_lease";
             using var temporaryLease=sessionLock is null?new FileStream(Path.Combine(LogDirectory,"session.lock"),FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None):null;
+            stage="validate_log_targets";
             if(logs.Any(p=>File.Exists(p)&&IsReparse(p)))throw new IOException();
+            stage="trim_log_files";
             foreach(var log in logs)if(File.Exists(log)&&new FileInfo(log).Length>fileLimit)File.Delete(log);
             if(File.Exists(logs[0])&&new FileInfo(logs[0]).Length+data.Length+1>fileLimit)
             {
+                stage="rotate_log_files";
                 if(File.Exists(logs[^1]))File.Delete(logs[^1]);
                 for(int i=logs.Length-2;i>=0;i--)if(File.Exists(logs[i]))File.Move(logs[i],logs[i+1],true);
             }
+            stage="open_log_entry";
             using(var file=new FileStream(logs[0],FileMode.Append,FileAccess.Write,FileShare.Read))
-            {file.Write(data);file.WriteByte((byte)'\n');file.Flush(true);}
+            {stage="append_log_entry";file.Write(data);file.WriteByte((byte)'\n');stage="flush_log_entry";file.Flush(true);}
             loggingAvailable=true;
         }
-        catch{loggingAvailable=false;}
+        catch(Exception error){CaptureLoggingFailure(stage,error);}
+    }
+    // Failure evidence must remain available even when all disk writes fail.
+    // Do not call Record/WriteEntry/WriteMarker, serialize, retain the exception
+    // object, invoke observers, or retry from this memory-only path.
+    private void CaptureLoggingFailure(string stage,Exception error)
+    {
+        loggingAvailable=false;
+        try
+        {
+            var failure=new RuntimeLoggingFailure(stage,SafeMethod(error.GetType().FullName??"unknown_exception"),error.HResult,DateTimeOffset.UtcNow);
+            firstLoggingFailure??=failure;lastLoggingFailure=failure;
+            if(loggingFailureCount<int.MaxValue)loggingFailureCount++;
+        }
+        catch{/* Logging diagnostics must not create another exception path. */}
     }
     private static string EventCode(string? value)=>value is not null&&Events.Contains(value)?value:"handled_exception";
     private static string? ReasonCode(string? value)=>value is null?null:Reasons.Contains(value)?value:"unspecified";

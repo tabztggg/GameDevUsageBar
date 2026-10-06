@@ -35,6 +35,8 @@ Get-FileHash -Algorithm SHA256 .\GameDevUsageBar-0.9.1-win-x64.zip
 
 便携版须完整解压到稳定目录，不要直接在 ZIP 中运行，也不要只复制 EXE。它与安装版共用当前用户数据目录和单实例标识，一次只运行一份。
 
+从 Codex 或其他管理命令进程的工具部署时，应由资源管理器启动。直接用 `Start-Process` 启动的程序可能继承工具的 Windows 进程组，随工具退出而结束。源码中的 `tools/start-installed.ps1` 使用已有的资源管理器窗口，核对新进程的资源管理器父进程；入口不可用时明确失败，不退回命令进程启动。使用脚本时需有一个资源管理器窗口；日常使用开始菜单或 Windows 登录自启动即可。属于某个进程组并不能确定管理它的是谁。见 [Microsoft 的 Job Objects 文档](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects)。
+
 ## 账号与认证
 
 在服务**设置**中配置。API 服务使用对应 API Key；Claude/Codex 的订阅 OAuth 与推理 API Key 分开。Tripo、GRSAI 的全球/中国节点由你明确选择，不自动跨区。

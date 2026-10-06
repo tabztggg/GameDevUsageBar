@@ -14,6 +14,7 @@ internal static class RuntimeDiagnosticsChecks
     {try{throw new InvalidOperationException(message,new ArgumentException(message));}catch(Exception error){error.Data["secret"]=message;return error;}}
     public static IEnumerable<(string Name,Func<Task> Run)> Cases()
     {
+        foreach(var item in FailureVisibilityCases())yield return item;
         yield return ("Runtime diagnostics distinguish clean exit, known fatal, observed unexpected exit, and unknown incomplete termination",()=>{
             var root=FixtureRoot();
             using(var log=new RuntimeDiagnostics(root,"0.9.2+0123456789abcdef")){Check(log.BeginSession());Check(log.GetSummary().PreviousSessionStatus=="no_previous_session");log.CompleteSession("tray_exit");}
@@ -77,6 +78,75 @@ internal static class RuntimeDiagnosticsChecks
             File.AppendAllText(path,"\n"+Canary+"\n"+injected+"\n"+new string('x',RuntimeDiagnostics.MaximumEntryBytes+1)+"\n");
             var destination=Path.Combine(root,"sanitized.zip");Check(log.ExportBundle(destination,"{}"));var exported=ZipText(destination);Check(!exported.Contains(Canary,StringComparison.Ordinal)&&exported.Contains("app_ready",StringComparison.Ordinal)&&exported.Contains("unknown_exception",StringComparison.Ordinal));
             using var zip=ZipFile.OpenRead(destination);foreach(var entry in zip.Entries.Where(e=>e.FullName.StartsWith("logs/",StringComparison.Ordinal))){using var stream=entry.Open();using var reader=new StreamReader(stream);while(reader.ReadLine() is {} line){using var doc=JsonDocument.Parse(line);Check(doc.RootElement.GetProperty("schema").GetInt32()==1);}}
+            return Task.CompletedTask;
+        });
+    }
+    public static IEnumerable<(string Name,Func<Task> Run)> FailureVisibilityCases()
+    {
+        void SafeFailure(RuntimeDiagnosticsSummary summary,string stage)
+        {
+            var failure=summary.LastLoggingFailure??throw new Exception("Logging failure metadata was lost");
+            Check(failure.HResult!=0&&failure.Stage==stage,"Logging failure stage/HResult was lost");
+            Check(failure.Type.StartsWith("System.",StringComparison.Ordinal),"Logging failure type was not preserved");
+            Check(failure.TimestampUtc.Offset==TimeSpan.Zero,"Logging failure timestamp is not UTC");
+            var text=JsonSerializer.Serialize(summary);
+            Check(!text.Contains(Canary,StringComparison.Ordinal)&&!text.Contains("Message",StringComparison.Ordinal)&&!text.Contains("Data",StringComparison.Ordinal)&&!text.Contains("Path",StringComparison.Ordinal),"Logging failure retained unsafe fields");
+        }
+        yield return ("Runtime logging failures preserve path normalization evidence in bounded memory without leaking rejected paths",()=>{
+            using var log=new RuntimeDiagnostics("invalid\0"+Canary,"0.9.2");
+            Check(!log.BeginSession());log.Record("app_ready");var summary=log.GetSummary();
+            Check(!summary.LoggingAvailable&&!summary.SessionStarted&&!log.SessionLoggingAvailable&&summary.FirstLoggingFailure?.Stage=="normalize_paths"&&summary.FirstLoggingFailure.Type=="System.ArgumentException");
+            SafeFailure(summary,"prepare_log_directory");
+            for(int index=0;index<300;index++)log.Record("app_ready");
+            Check(log.Recent.Count==RuntimeDiagnostics.MaximumRecentEntries&&log.GetSummary().FirstLoggingFailure?.Stage=="normalize_paths","Memory failure evidence grew unbounded or lost the first cause");
+            return Task.CompletedTask;
+        });
+        yield return ("Runtime logging failures expose directory creation errors when BeginSession cannot persist any event",()=>{
+            var root=FixtureRoot();File.WriteAllText(Path.Combine(root,"logs"),Canary);
+            using var log=new RuntimeDiagnostics(root,"0.9.2");Check(!log.BeginSession());var summary=log.GetSummary();
+            Check(!summary.LoggingAvailable&&!summary.SessionStarted&&!log.SessionLoggingAvailable&&summary.LoggingFailureCount==1&&log.Recent.Count==0);
+            SafeFailure(summary,"prepare_log_directory");Check(!JsonSerializer.Serialize(summary).Contains(root,StringComparison.Ordinal));
+            return Task.CompletedTask;
+        });
+        yield return ("Runtime logging failures identify conflicting session leases without disturbing primary log or marker evidence",()=>{
+            var root=FixtureRoot();using var primary=new RuntimeDiagnostics(root,"0.9.2");Check(primary.BeginSession());
+            var marker=Path.Combine(primary.LogDirectory,"session.json");var before=File.ReadAllBytes(marker);var beforeLogs=Logs(root);
+            using var duplicate=new RuntimeDiagnostics(root,"0.9.2");Check(!duplicate.BeginSession());var summary=duplicate.GetSummary();
+            SafeFailure(summary,"acquire_session_lease");Check(!summary.SessionStarted&&!summary.LoggingAvailable);
+            duplicate.Record("duplicate_instance","duplicate_instance");SafeFailure(duplicate.GetSummary(),"acquire_transient_lease");
+            Check(before.SequenceEqual(File.ReadAllBytes(marker))&&beforeLogs==Logs(root)&&primary.GetSummary().LoggingAvailable,"Failure diagnostics disturbed the primary lease/evidence");
+            return Task.CompletedTask;
+        });
+        yield return ("Runtime logging failures preserve append errors in memory and retain their evidence after subsequent writes recover",()=>{
+            var root=FixtureRoot();using var log=new RuntimeDiagnostics(root,"0.9.2");Check(log.BeginSession());
+            var active=Path.Combine(log.LogDirectory,"runtime.jsonl");
+            using(var held=new FileStream(active,FileMode.Open,FileAccess.Read,FileShare.Read))
+            {
+                log.Record("app_ready");var summary=log.GetSummary();
+                SafeFailure(summary,"open_log_entry");Check(!summary.LoggingAvailable&&summary.SessionStarted&&!log.SessionLoggingAvailable&&summary.LoggingFailureCount==1);
+                Check(log.Recent.Last().Event=="app_ready","Failed append lost its in-memory event");
+            }
+            log.Record("app_ready");var recovered=log.GetSummary();
+            Check(recovered.LoggingAvailable&&log.SessionLoggingAvailable&&recovered.FirstLoggingFailure?.Stage=="open_log_entry"&&recovered.LoggingFailureCount==1,"Recovery erased failure evidence or introduced an extra attempt");
+            var zip=Path.Combine(root,"failure-summary.zip");Check(log.ExportBundle(zip,"{}"));
+            Check(ZipText(zip).Contains("open_log_entry",StringComparison.Ordinal)&&!ZipText(zip).Contains(root,StringComparison.Ordinal)&&!ZipText(zip).Contains(Canary,StringComparison.Ordinal));
+            return Task.CompletedTask;
+        });
+        yield return ("Runtime logging failures preserve precise marker staging errors without recursive writes or false completed markers",()=>{
+            var root=FixtureRoot();using var log=new RuntimeDiagnostics(root,"0.9.2");Check(log.BeginSession());
+            var marker=Path.Combine(log.LogDirectory,"session.json");var before=File.ReadAllBytes(marker);
+            Directory.CreateDirectory(Path.Combine(log.LogDirectory,"session.tmp"));log.CompleteSession("tray_exit");
+            var summary=log.GetSummary();SafeFailure(summary,"open_marker_staging");
+            Check(!summary.LoggingAvailable&&summary.LoggingFailureCount==1&&before.SequenceEqual(File.ReadAllBytes(marker)),"Marker failure recursed or published a false final marker");
+            Check(log.Recent.Last().Event=="session_end","Observed exit event was discarded after marker write failure");
+            return Task.CompletedTask;
+        });
+        yield return ("Runtime logging failures retain the marker initialization failure stage once and release the failed startup lease",()=>{
+            var root=FixtureRoot();Directory.CreateDirectory(Path.Combine(root,"logs","session.tmp"));
+            using var log=new RuntimeDiagnostics(root,"0.9.2");Check(!log.BeginSession());var summary=log.GetSummary();
+            SafeFailure(summary,"open_marker_staging");Check(!summary.SessionStarted&&summary.LoggingFailureCount==1);
+            using var released=new FileStream(Path.Combine(log.LogDirectory,"session.lock"),FileMode.Open,FileAccess.ReadWrite,FileShare.None);
+            Check(!File.Exists(Path.Combine(log.LogDirectory,"session.json")),"Failed initialization published a session marker");
             return Task.CompletedTask;
         });
     }

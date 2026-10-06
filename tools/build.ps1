@@ -33,6 +33,8 @@ try {
     Copy-Item -LiteralPath (Join-Path $projectRoot 'README.md'),(Join-Path $projectRoot 'README.zh-CN.md'),(Join-Path $projectRoot 'ACCEPTANCE.md'),(Join-Path $projectRoot 'NOTICE-CodexBar.txt'),(Join-Path $projectRoot 'QUOTA-API.md'),(Join-Path $projectRoot 'QUOTA-API.zh-CN.md') -Destination $published -Force
     $apiFolder=Join-Path $published 'api';New-Item -ItemType Directory -Path $apiFolder -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $projectRoot 'QUOTA-API.md'),(Join-Path $projectRoot 'QUOTA-API.zh-CN.md'),(Join-Path $projectRoot 'tools/Get-GameDevQuota.ps1') -Destination $apiFolder -Force
+    $launchFolder=Join-Path $published 'tools';New-Item -ItemType Directory -Path $launchFolder -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'tools/start-installed.ps1') -Destination $launchFolder -Force
     foreach($notice in @('LICENSE.txt','THIRD-PARTY-NOTICES.md')) {
       $noticePath=Join-Path $projectRoot $notice
       if(Test-Path -LiteralPath $noticePath){Copy-Item -LiteralPath $noticePath -Destination $published -Force}
