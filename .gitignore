@@ -4,6 +4,10 @@ artifacts/
 .vs/
 *.user
 *.log
+logs/
+*.jsonl
+GameDevUsageBar-diagnostics-*.zip
+GameDevUsageBar-diagnostics-*.json
 *.bin
 settings.json
 cache/

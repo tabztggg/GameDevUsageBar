@@ -6,9 +6,18 @@ using GameDevUsageBar.Providers;
 using GameDevUsageBar.Core;
 using GameDevUsageBar.Core.Presentation;
 using GameDevUsageBar.App.Presentation;
+using System.Windows.Threading;
 namespace GameDevUsageBar.App;
 public partial class App : System.Windows.Application
 {
+    private readonly string dataRoot;
+    private readonly IReadOnlyList<IProviderAdapter>? adapters;
+    private readonly string instanceName;
+    private readonly bool showStartupErrors, startQuotaApi;
+    private System.Threading.Timer? resourceTimer;
+    private string? exitReason;
+    private int exitCode;
+    private volatile bool shutdownCompleted;
     private Mutex? mutex;
     private EventWaitHandle? openEvent;
     private RegisteredWaitHandle? eventWait;
@@ -19,55 +28,141 @@ public partial class App : System.Windows.Application
     private Task? exiting;
     private bool pendingOpen;
     public ApplicationHost? Host {get;private set;}
+    internal RuntimeDiagnostics? RuntimeLog {get;}
+    internal event Action? RuntimeReady;
+    public App() : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"GameDevBar"),null,"Local\\GameDevBar",true,true) {}
+    internal App(string dataRoot,IReadOnlyList<IProviderAdapter>? adapters,string instanceName,bool showStartupErrors,bool startQuotaApi=false)
+    {
+        this.dataRoot=dataRoot;this.adapters=adapters;this.instanceName=instanceName;
+        this.showStartupErrors=showStartupErrors;this.startQuotaApi=startQuotaApi;
+        RuntimeLog=new(dataRoot,BuildVersion);
+        DispatcherUnhandledException+=DispatcherError;
+        AppDomain.CurrentDomain.UnhandledException+=DomainError;
+        AppDomain.CurrentDomain.ProcessExit+=ProcessEnding;
+        TaskScheduler.UnobservedTaskException+=TaskError;
+        System.Windows.Forms.Application.ThreadException+=FormsError;
+        SessionEnding+=SessionEndingHandler;
+    }
+    internal static string BuildVersion => typeof(App).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute),false)
+        .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion ?? "unknown";
     protected override async void OnStartup(StartupEventArgs e)
     {
-        base.OnStartup(e);ThemeService.Apply();
-        openEvent=new EventWaitHandle(false,EventResetMode.AutoReset,"Local\\GameDevBar.Open");
-        mutex=new Mutex(true,"Local\\GameDevBar",out var first);
-        if(!first) {
-            openEvent.Set();openEvent.Dispose();mutex.Dispose();
-            Shutdown();return;
-        }
-
-        eventWait=ThreadPool.RegisterWaitForSingleObject(openEvent,(_,_)=> {
-            if(!Dispatcher.HasShutdownStarted)Dispatcher.BeginInvoke(()=> {if(surfaces is null)pendingOpen=true;else if(exiting is null)surfaces.ShowOverview();});
-        },null,Timeout.Infinite,false);
-        DispatcherUnhandledException+=(_,error)=> {error.Handled=true;if(surfaces is not null)surfaces.Overview.ReportLocalError();};
         try {
-            Host=new ApplicationHost(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"GameDevBar"));
+            openEvent=new EventWaitHandle(false,EventResetMode.AutoReset,instanceName+".Open");
+            mutex=new Mutex(true,instanceName,out var first);
+            if(!first) {
+                RuntimeLog?.Record("duplicate_instance","duplicate_instance");exitReason="duplicate_instance";
+                openEvent.Set();openEvent.Dispose();openEvent=null;mutex.Dispose();mutex=null;
+                Shutdown();return;
+            }
+            RuntimeLog?.BeginSession();RuntimeLog?.Record("app_start");RuntimeLog?.SampleResources();
+            base.OnStartup(e);ThemeService.Apply();
+            eventWait=ThreadPool.RegisterWaitForSingleObject(openEvent,(_,_)=> {
+                if(!Dispatcher.HasShutdownStarted)Dispatcher.BeginInvoke(()=> {if(surfaces is null)pendingOpen=true;else if(exiting is null)surfaces.ShowOverview();});
+            },null,Timeout.Infinite,false);
+            Host=new ApplicationHost(dataRoot,adapters){RuntimeLog=RuntimeLog};
             await Host.InitializeAsync();
-            var store=new PresentationStore(Host.Root);var loaded=await store.LoadAsync();
+            var store=new PresentationStore(Host.Root,error=>RuntimeLog?.RecordException("handled_exception",error));var loaded=await store.LoadAsync();
             var seed=Host.Accounts.OrderBy(a=>a.Order).Select(a=>a.ProviderId).ToArray();
             var initial=loaded ?? new PresentationPreferences();
             L.SetLanguage(initial.Language);
             initial=initial with {CardOrder=(initial.CardOrder ?? seed).Concat(seed).Distinct().ToArray()};
-            preferences=new(store,initial);hub=new(Host.Adapters,Host.Coordinator,preferences,Dispatcher);
+            preferences=new(store,initial,error=>RuntimeLog?.RecordException("preferences_flush_failed",error));hub=new(Host.Adapters,Host.Coordinator,preferences,Dispatcher);
             var overview=new MainWindow(Host,hub,preferences);MainWindow=overview;
-            surfaces=new(Host,hub,preferences,overview,()=>_ = ExitAsync());
-            tray=new(surfaces,hub,preferences,()=>_ = ExitAsync());
-            await Host.StartQuotaApiAsync(()=>hub.Network.Snapshot);
-            if(Host.QuotaApiStatus!="Listening")overview.ReportQuotaApiError();
+            surfaces=new(Host,hub,preferences,overview,()=>_ = ExitAsync(),reason=>_ = ExitAsync(reason));
+            tray=new(surfaces,hub,preferences,()=>_ = ExitAsync("tray_exit"));
+            if(startQuotaApi) {
+                await Host.StartQuotaApiAsync(()=>hub.Network.Snapshot);
+                if(Host.QuotaApiStatus!="Listening")overview.ReportQuotaApiError();
+            }
             Host.Coordinator.Start();
             if(!initial.StartInTray || pendingOpen)surfaces.ShowOverview();
-            SessionEnding+=(_,_)=> {try {preferences.FlushAsync().Wait(TimeSpan.FromSeconds(2));}catch{}};
-        } catch {
-            System.Windows.MessageBox.Show(L.T("GameDevUsageBar could not initialize local files. Check access to the app data folder."),"GameDevUsageBar");
-            await ExitAsync();
+            RuntimeLog?.Record("app_ready");
+            resourceTimer=new(_=>RuntimeLog?.SampleResources(),null,TimeSpan.FromMinutes(1),TimeSpan.FromMinutes(1));
+            RuntimeReady?.Invoke();
+        } catch(Exception error) {
+            if(exitReason!="duplicate_instance"&&RuntimeLog?.GetSummary().SessionStarted==false)RuntimeLog.BeginSession();
+            RuntimeLog?.RecordException("startup_exception",error);exitCode=1;
+            if(showStartupErrors)System.Windows.MessageBox.Show(L.T("GameDevUsageBar could not initialize local files. Check access to the app data folder."),"GameDevUsageBar");
+            await ExitAsync("startup_failure");
         }
     }
-    public Task ExitAsync()=>exiting ??= ExitCoreAsync();
+    public Task ExitAsync(string reason="explicit_exit")
+    {
+        if(exiting is not null)return exiting;
+        exitReason=reason;RuntimeLog?.Record("exit_requested",reason);
+        return exiting=ExitCoreAsync();
+    }
+    private void DispatcherError(object sender,DispatcherUnhandledExceptionEventArgs e)
+    {
+        RuntimeLog?.RecordException("dispatcher_unhandled",e.Exception);
+        e.Handled=true;ReportLocalError();
+    }
+    private void FormsError(object sender,ThreadExceptionEventArgs e)
+    {
+        RuntimeLog?.RecordException("winforms_unhandled",e.Exception);ReportLocalError();
+    }
+    private void ReportLocalError()
+    {
+        try {if(surfaces is not null&&!Dispatcher.HasShutdownStarted)Dispatcher.BeginInvoke(()=>surfaces.Overview.ReportLocalError());}
+        catch {/* The existing generic error notice must not produce another fatal error. */}
+    }
+    private void DomainError(object sender,UnhandledExceptionEventArgs e)
+    {
+        if(e.ExceptionObject is Exception error)RuntimeLog?.RecordException("appdomain_unhandled",error);
+        else RuntimeLog?.Record("appdomain_unhandled");
+        if(e.IsTerminating)RuntimeLog?.CompleteSession("fatal_exception",1);
+    }
+    private void TaskError(object? sender,UnobservedTaskExceptionEventArgs e)=>RuntimeLog?.RecordException("task_unobserved",e.Exception);
+    private void ProcessEnding(object? sender,EventArgs e)
+    {
+        var reason=shutdownCompleted?(exitCode!=0&&exitReason!="startup_failure"?"shutdown_failure":exitReason??"application_shutdown"):"process_exit_without_shutdown";
+        RuntimeLog?.CompleteSession(reason,exitCode);
+        RuntimeLog?.Dispose();Cleanup(()=>mutex?.Dispose());
+        AppDomain.CurrentDomain.UnhandledException-=DomainError;
+        AppDomain.CurrentDomain.ProcessExit-=ProcessEnding;
+        TaskScheduler.UnobservedTaskException-=TaskError;
+        System.Windows.Forms.Application.ThreadException-=FormsError;
+    }
+    private void SessionEndingHandler(object sender,SessionEndingCancelEventArgs e)
+    {
+        exitReason=e.ReasonSessionEnding==ReasonSessionEnding.Logoff?"session_logoff":"session_shutdown";
+        RuntimeLog?.Record("session_ending",exitReason);RuntimeLog?.SampleResources();
+        try {if(preferences is not null&&!preferences.FlushAsync().Wait(TimeSpan.FromSeconds(2)))RuntimeLog?.RecordException("preferences_flush_failed",new TimeoutException());}
+        catch(Exception error){RuntimeLog?.RecordException("preferences_flush_failed",error);}
+    }
+    private void Cleanup(Action action)
+    {
+        try {action();}catch(Exception error){exitCode=1;RuntimeLog?.RecordException("shutdown_cleanup_exception",error);}
+    }
     private async Task ExitCoreAsync()
     {
-        eventWait?.Unregister(null);openEvent?.Dispose();tray?.Dispose();
-        if(preferences is not null) {try {await preferences.FlushAsync().WaitAsync(TimeSpan.FromSeconds(2));}catch{}preferences.Dispose();}
-        hub?.Dispose();surfaces?.Dispose();
-        if(Host is not null)await Host.DisposeAsync();
-        mutex?.Dispose();Shutdown();
+        resourceTimer?.Dispose();resourceTimer=null;
+        Cleanup(()=>eventWait?.Unregister(null));Cleanup(()=>openEvent?.Dispose());Cleanup(()=>tray?.Dispose());
+        if(preferences is not null) {
+            try {await preferences.FlushAsync().WaitAsync(TimeSpan.FromSeconds(2));}
+            catch(Exception error){exitCode=1;RuntimeLog?.RecordException("preferences_flush_failed",error);}
+            Cleanup(preferences.Dispose);
+        }
+        Cleanup(()=>hub?.Dispose());Cleanup(()=>surfaces?.Dispose());
+        if(Host is not null)try {await Host.DisposeAsync();}catch(Exception error){exitCode=1;RuntimeLog?.RecordException("shutdown_cleanup_exception",error);}
+        Shutdown(exitCode);
+    }
+    protected override void OnExit(ExitEventArgs e)
+    {
+        resourceTimer?.Dispose();resourceTimer=null;
+        RuntimeLog?.SampleResources();exitCode=e.ApplicationExitCode;
+        base.OnExit(e);
+        RuntimeLog?.Record("app_exit",exitReason??"application_shutdown");shutdownCompleted=true;
+        SessionEnding-=SessionEndingHandler;
+        // Keep fatal/process-exit hooks and the single-instance mutex until the
+        // actual process ends: late teardown failures must not appear clean.
     }
 }
 public sealed partial class ApplicationHost : IAsyncDisposable
 {
     public string Root { get; }
+    public RuntimeDiagnostics? RuntimeLog {get;set;}
     public IReadOnlyList<IProviderAdapter> Adapters { get; }
     public SettingsStore Settings { get; }
     public DpapiSecretStore Secrets { get; }
@@ -78,9 +173,9 @@ public sealed partial class ApplicationHost : IAsyncDisposable
     public async Task StartQuotaApiAsync(Func<NetworkSpeedSnapshot>? network=null)
     {
         if(QuotaApi is not null)return;
-        var api=new QuotaApiServer(()=>UsageExporter.Export(Adapters,Coordinator,DateTimeOffset.UtcNow),network,()=>UsageExporter.Accounts(Adapters,Coordinator,DateTimeOffset.UtcNow));
+        var api=new QuotaApiServer(()=>UsageExporter.Export(Adapters,Coordinator,DateTimeOffset.UtcNow),network,()=>UsageExporter.Accounts(Adapters,Coordinator,DateTimeOffset.UtcNow),ReportHandledError);
         try {await api.StartAsync();QuotaApi=api;QuotaApiStatus="Listening";}
-        catch {await api.DisposeAsync();QuotaApiStatus="Unavailable";}
+        catch(Exception error) {RuntimeLog?.RecordException("handled_exception",error);await api.DisposeAsync();QuotaApiStatus="Unavailable";}
     }
     public List<AccountConfig> Accounts { get; private set; } = [];
     private readonly SemaphoreSlim saving = new(1,1);
@@ -89,12 +184,14 @@ public sealed partial class ApplicationHost : IAsyncDisposable
     public AccountConfig GetActiveAccount(string id)=>Accounts.Single(account=>account.ProviderId==id&&account.IsActive);
     public ApplicationHost(string root,IReadOnlyList<IProviderAdapter>? adapters = null,NativeOAuthStore? native = null)
     {
-        Root=root; Adapters=adapters ?? ProviderCatalog.Create(); Settings=new(root); Secrets=new(root);
-        var nativeStore=native??new NativeOAuthStore();
+        Root=root; Adapters=adapters ?? ProviderCatalog.Create(); Settings=new(root,ReportHandledError); Secrets=new(root,ReportHandledError);
+        var nativeStore=native??new NativeOAuthStore(onError:ReportHandledError);
         var renewal=native is null?new NativeClaudeRenewal(root,nativeStore,CommitRenewalBindingAsync):null;
-        Queries=new(Secrets,Adapters.Select(a=>a.Definition),native:nativeStore,nativeVault:new NativeAuthVault(root,nativeStore),renewal:renewal);
-        Coordinator=new(Queries,new DiskSnapshotStore(root));
+        Queries=new(Secrets,Adapters.Select(a=>a.Definition),native:nativeStore,nativeVault:new NativeAuthVault(root,nativeStore,onError:ReportHandledError),renewal:renewal,onError:ReportHandledError);
+        Coordinator=new(Queries,new DiskSnapshotStore(root,ReportHandledError));Coordinator.ErrorObserved+=ReportHandledError;
+        foreach(var adapter in Adapters.OfType<ApiAdapter>())adapter.ErrorObserved+=ReportHandledError;
     }
+    private void ReportHandledError(Exception error)=>RuntimeLog?.RecordException("handled_exception",error);
     private async Task<AccountConfig> CommitRenewalBindingAsync(AccountConfig expected,AccountConfig proposed)
     {
         await saving.WaitAsync();
@@ -229,9 +326,17 @@ public sealed partial class ApplicationHost : IAsyncDisposable
         if(old.NativeAuthRef is {} native&&native!=replacement?.NativeAuthRef&&!Accounts.Any(account=>account.NativeAuthRef==native))NativeCredentialRemoved(native);
     }
     public string Diagnostics() => System.Text.Json.JsonSerializer.Serialize(new {
-        app="GameDevUsageBar",version="0.9.1",framework=Environment.Version.ToString(),
+        app="GameDevUsageBar",version=App.BuildVersion,framework=Environment.Version.ToString(),runtime=RuntimeLog?.GetSummary(),
         sources=Adapters.Select(a=>new { id=a.Definition.Id,channel=a.Definition.Channel,host=TripoRegions.Endpoint(a.Definition,Coordinator.Get(a.Definition.Id).Config)?.Host,status=Coordinator.Get(a.Definition.Id).Failure?.ToString(),lastAttempt=Coordinator.Get(a.Definition.Id).LastAttempt,lastSuccess=Coordinator.Get(a.Definition.Id).LastSuccess?.RetrievedAt }),
         localQuotaApi=new {status=QuotaApiStatus,address=QuotaApi?.Address},events=Queries.Events
     },new System.Text.Json.JsonSerializerOptions {WriteIndented=true});
-    public async ValueTask DisposeAsync() {if(QuotaApi is not null)await QuotaApi.DisposeAsync(); await Coordinator.DisposeAsync(); Queries.Dispose(); saving.Dispose(); }
+    public async ValueTask DisposeAsync() {
+        if(QuotaApi is not null)await QuotaApi.DisposeAsync();
+        try {await Coordinator.DisposeAsync();}
+        finally {
+            Coordinator.ErrorObserved-=ReportHandledError;
+            foreach(var adapter in Adapters.OfType<ApiAdapter>())adapter.ErrorObserved-=ReportHandledError;
+            Queries.Dispose();saving.Dispose();
+        }
+    }
 }

@@ -20,6 +20,8 @@ try {
     if($LASTEXITCODE -ne 0){throw 'WPF/Win32 integration checks failed.'}
     & $sdk run --project tests\GameDevUsageBar.AppTests -c Release --no-build -- --multi-account
     if($LASTEXITCODE -ne 0){throw 'Multi-account and native-auth integration checks failed.'}
+    & $sdk run --project tests\GameDevUsageBar.AppTests -c Release --no-build -- --runtime-lifecycle
+    if($LASTEXITCODE -ne 0){throw 'Runtime lifecycle and diagnostics checks failed.'}
   }
   if($Publish){
     $destination = Join-Path $projectRoot "artifacts\GameDevUsageBar-$version-win-x64"

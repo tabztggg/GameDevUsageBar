@@ -16,7 +16,7 @@ public sealed record NativeAccountResult(NativeAccountStatus Status,string Messa
 // This operation publishes only the selected CLI auth file. It does not start,
 // stop or restart any process, edit desktop/config/account metadata, or log in.
 public sealed class NativeLoginSwitcher(NativeOAuthStore native,NativeAuthVault vault,
-    Func<string,bool>? busyGuard=null,Action? beforePublish=null,Action<string,string>? publish=null)
+    Func<string,bool>? busyGuard=null,Action? beforePublish=null,Action<string,string>? publish=null,Action<Exception>? onError=null)
 {
     private static readonly SemaphoreSlim switching=new(1,1);
     public async Task<NativeAccountResult> SwitchAsync(AccountConfig target,IEnumerable<AccountConfig> accounts)
@@ -35,7 +35,7 @@ public sealed class NativeLoginSwitcher(NativeOAuthStore native,NativeAuthVault 
                 if((File.GetAttributes(path)&FileAttributes.ReparsePoint)!=0)return Result(NativeAccountStatus.Invalid);
                 old=native.ReadDocument(target.ProviderId);
                 NativeOAuth? current=null;
-                try{current=native.ParseDocument(target.ProviderId,old,false);}catch(QueryException){/* Preserve unreadable old documents in encrypted recovery. */}
+                try{current=native.ParseDocument(target.ProviderId,old,false);}catch(QueryException error){ErrorObserver.Report(onError,error);/* Preserve unreadable old documents in encrypted recovery. */}
                 if(current is not null)
                 {
                     var known=accounts.Where(a=>a.ProviderId==target.ProviderId&&a.SourceMode=="saved-oauth"&&a.NativeAuthRef is not null&&a.NativeIdentity==current.Identity).ToArray();
@@ -64,22 +64,23 @@ public sealed class NativeLoginSwitcher(NativeOAuthStore native,NativeAuthVault 
             return Result(NativeAccountStatus.Unknown,recovery);
         }
         catch(QueryException error)when(!attempted)
-        {return Result(error.Kind switch {FailureKind.CredentialMissing=>NativeAccountStatus.Missing,FailureKind.CredentialExpired=>NativeAccountStatus.Expired,_=>NativeAccountStatus.Invalid},recovery);}
-        catch
+        {ErrorObserver.Report(onError,error);return Result(error.Kind switch {FailureKind.CredentialMissing=>NativeAccountStatus.Missing,FailureKind.CredentialExpired=>NativeAccountStatus.Expired,_=>NativeAccountStatus.Invalid},recovery);}
+        catch(Exception error)
         {
+            ErrorObserver.Report(onError,error);
             if(!attempted)return Result(NativeAccountStatus.Failed,recovery);
             var path=native.PathFor(target.ProviderId);
             // A failed call can still have published. Read back once and never
             // replay or roll back an uncertain write over another process.
             if(desired is not null&&Matches(path,desired))
-            {try{vault.ClearPendingSwitch(target.ProviderId);}catch{}return Result(NativeAccountStatus.Switched,recovery);}
+            {try{vault.ClearPendingSwitch(target.ProviderId);}catch(Exception cleanupError){ErrorObserver.Report(onError,cleanupError);}return Result(NativeAccountStatus.Switched,recovery);}
             if(Matches(path,old))
-            {try{vault.ClearPendingSwitch(target.ProviderId);}catch{}return Result(NativeAccountStatus.Failed,recovery);}
+            {try{vault.ClearPendingSwitch(target.ProviderId);}catch(Exception cleanupError){ErrorObserver.Report(onError,cleanupError);}return Result(NativeAccountStatus.Failed,recovery);}
             return Result(NativeAccountStatus.Unknown,recovery);
         }
         finally
         {
-            if(temporary is not null&&File.Exists(temporary)){try{File.Delete(temporary);}catch{/* No plaintext backup is created; an inaccessible staging file cannot be safely manipulated further. */}}
+            if(temporary is not null&&File.Exists(temporary)){try{File.Delete(temporary);}catch(Exception cleanupError){ErrorObserver.Report(onError,cleanupError);/* No plaintext backup is created; an inaccessible staging file cannot be safely manipulated further. */}}
             if(old is not null)CryptographicOperations.ZeroMemory(old);
             if(targetDocument is not null)CryptographicOperations.ZeroMemory(targetDocument);
             if(desired is not null)CryptographicOperations.ZeroMemory(desired);
@@ -96,7 +97,7 @@ public sealed class NativeLoginSwitcher(NativeOAuthStore native,NativeAuthVault 
         if(bytes.Length>65536){CryptographicOperations.ZeroMemory(bytes);throw new QueryException(FailureKind.CredentialUnreadable);}
         return bytes;
     }
-    private static bool Matches(string path,byte[]? expected)
+    private bool Matches(string path,byte[]? expected)
     {
         byte[]? actual=null;
         try
@@ -107,7 +108,7 @@ public sealed class NativeLoginSwitcher(NativeOAuthStore native,NativeAuthVault 
             actual=new byte[expected.Length];stream.ReadExactly(actual);
             return CryptographicOperations.FixedTimeEquals(SHA256.HashData(actual),SHA256.HashData(expected));
         }
-        catch{return false;}finally{if(actual is not null)CryptographicOperations.ZeroMemory(actual);}
+        catch(Exception error){ErrorObserver.Report(onError,error);return false;}finally{if(actual is not null)CryptographicOperations.ZeroMemory(actual);}
     }
     public static NativeAccountResult Result(NativeAccountStatus status,Guid? recovery=null)=>new(status,status switch {
         NativeAccountStatus.Captured=>"Current CLI login saved for this account. Its credential is encrypted for this Windows user.",

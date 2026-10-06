@@ -89,6 +89,8 @@ Check each metric's freshness and `usable` flag. Shared balances are not separat
 
 ## Data and safety
 
+The v0.9.2 source adds bounded startup, exit, error, and resource logs under `%LOCALAPPDATA%\GameDevBar\logs`. Open **Export diagnostics…** from the overview or tray menu to preview and save a filtered ZIP locally. An interrupted session is reported on the next launch without inventing its cause. [Diagnostic logging](docs/diagnostics.md)
+
 Settings, caches, encrypted credentials, and presentation preferences live in `%LOCALAPPDATA%\GameDevBar`; the legacy name preserves compatibility. Installation/removal do not sign you out of Codex, Claude, or Gemini.
 
 Usage queries do not generate content or redeem tickets. Current Claude renewal and explicit CLI switching are the scoped auth-writing operations above. Provider requests retain TLS verification, response limits, disabled redirects, and account/source cache isolation. Display and language changes do not query providers.

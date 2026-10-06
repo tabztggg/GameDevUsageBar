@@ -12,7 +12,7 @@ using Microsoft.Extensions.Logging;
 
 namespace GameDevUsageBar.Infrastructure;
 
-public sealed class QuotaApiServer(Func<UsageExport> export,Func<NetworkSpeedSnapshot>? network=null,Func<AccountUsageExport>? accounts=null) : IAsyncDisposable
+public sealed class QuotaApiServer(Func<UsageExport> export,Func<NetworkSpeedSnapshot>? network=null,Func<AccountUsageExport>? accounts=null,Action<Exception>? onError=null) : IAsyncDisposable
 {
     public const int DefaultPort=17864;
     public const string DefaultAddress="http://127.0.0.1:17864";
@@ -37,6 +37,15 @@ public sealed class QuotaApiServer(Func<UsageExport> export,Func<NetworkSpeedSna
         } catch {await app.DisposeAsync();throw;}
     }
     private async Task HandleAsync(HttpContext context)
+    {
+        try{await HandleCoreAsync(context);}
+        catch(OperationCanceledException)when(context.RequestAborted.IsCancellationRequested){}
+        catch(Exception error){
+            ErrorObserver.Report(onError,error);
+            if(!context.Response.HasStarted){context.Response.StatusCode=503;await context.Response.WriteAsJsonAsync(new{error="snapshot_unavailable"},Json,context.RequestAborted);}
+        }
+    }
+    private async Task HandleCoreAsync(HttpContext context)
     {
         context.Response.Headers.CacheControl="no-store";context.Response.Headers.XContentTypeOptions="nosniff";
         context.Response.Headers.ContentSecurityPolicy="default-src 'none'";
@@ -68,7 +77,7 @@ public sealed class QuotaApiServer(Func<UsageExport> export,Func<NetworkSpeedSna
             if(provider is null){await Reply(404,new {error="provider_not_found"});return;}
             await Reply(200,new {snapshot.SchemaVersion,snapshot.App,snapshot.AppVersion,snapshot.GeneratedAt,snapshot.SharedAccountState,provider});
         } catch(OperationCanceledException) when(context.RequestAborted.IsCancellationRequested) { }
-        catch {if(!context.Response.HasStarted)await Reply(503,new {error="snapshot_unavailable"});}
+        catch(Exception error) {ErrorObserver.Report(onError,error);if(!context.Response.HasStarted)await Reply(503,new {error="snapshot_unavailable"});}
     }
     public async ValueTask DisposeAsync()
     {

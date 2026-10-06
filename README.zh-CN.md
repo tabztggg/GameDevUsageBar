@@ -83,6 +83,8 @@ Invoke-RestMethod -NoProxy -TimeoutSec 5 http://127.0.0.1:17864/v1/accounts
 
 ## 本地数据与安全
 
+v0.9.2 源码新增有容量上限的启动、退出、错误及资源日志，保存在 `%LOCALAPPDATA%\GameDevBar\logs`。从总览或托盘菜单打开**导出诊断信息…**，预览后可将过滤后的 ZIP 保存到本机。中断的会话会在下次启动时标记，不推断缺乏证据的退出原因。见[诊断日志说明](docs/diagnostics.zh-CN.md)。
+
 配置、缓存、加密凭据和显示设置位于 `%LOCALAPPDATA%\GameDevBar`，沿用旧目录名以保持兼容。安装或卸载不会退出 Codex、Claude 或 Gemini 登录。
 
 额度查询不生成内容、不兑换重置券。当前 Claude 自动续期和明确执行的 CLI 切换，是上文限定的认证写入操作。请求保留 TLS 校验、响应限制、禁用重定向和账号/来源缓存隔离；显示及语言切换不查询服务。

@@ -11,11 +11,12 @@ public sealed class GuardedQueryClient : IQueryClient, IDisposable
     private readonly IReadOnlyDictionary<string,ProviderDefinition> catalog;
     private readonly HttpClient client;
     private readonly TimeProvider time;
+    private readonly Action<Exception>? onError;
     private readonly List<SafeEvent> events = [];
     public IReadOnlyList<SafeEvent> Events { get { lock(events) return events.ToArray(); } }
-    public GuardedQueryClient(ISecretStore secrets, IEnumerable<ProviderDefinition> definitions, HttpMessageHandler? testHandler = null, TimeProvider? clock = null)
+    public GuardedQueryClient(ISecretStore secrets, IEnumerable<ProviderDefinition> definitions, HttpMessageHandler? testHandler = null, TimeProvider? clock = null,Action<Exception>? onError=null)
     {
-        this.secrets = secrets; catalog = definitions.ToDictionary(d=>d.Id); time = clock ?? TimeProvider.System;
+        this.secrets = secrets; catalog = definitions.ToDictionary(d=>d.Id); time = clock ?? TimeProvider.System;this.onError=onError;
         client = new HttpClient(testHandler ?? new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false, AutomaticDecompression = DecompressionMethods.None }) { Timeout = Timeout.InfiniteTimeSpan };
     }
     public static void Validate(Uri uri, EndpointRule rule, HttpMethod method)
@@ -64,9 +65,9 @@ public sealed class GuardedQueryClient : IQueryClient, IDisposable
             }
             return buffer.ToArray();
         }
-        catch(OperationCanceledException) when(!ct.IsCancellationRequested) { throw new QueryException(FailureKind.Timeout); }
-        catch(HttpRequestException) { throw new QueryException(FailureKind.Network); }
-        catch(IOException) { throw new QueryException(FailureKind.Network); }
+        catch(OperationCanceledException error) when(!ct.IsCancellationRequested) {ErrorObserver.Report(onError,error); throw new QueryException(FailureKind.Timeout); }
+        catch(HttpRequestException error) {ErrorObserver.Report(onError,error); throw new QueryException(FailureKind.Network); }
+        catch(IOException error) {ErrorObserver.Report(onError,error); throw new QueryException(FailureKind.Network); }
     }
     public void Dispose() => client.Dispose();
 }

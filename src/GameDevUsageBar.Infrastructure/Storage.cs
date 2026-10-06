@@ -21,7 +21,7 @@ public static class AtomicFile
         finally { if(File.Exists(temp)) File.Delete(temp); }
     }
 }
-public sealed class SettingsStore(string root)
+public sealed class SettingsStore(string root,Action<Exception>? onError=null)
 {
     private readonly string path = Path.Combine(root, "settings.json");
     public bool ReadOnly { get; private set; }
@@ -37,7 +37,7 @@ public sealed class SettingsStore(string root)
             ValidateAccounts(settings.Accounts);
             return settings.Accounts;
         }
-        catch { ReadOnly = true; return []; }
+        catch(Exception error) {ErrorObserver.Report(onError,error); ReadOnly = true; return []; }
     }
     public Task SaveAsync(IEnumerable<AccountConfig> accounts)
     {
@@ -61,7 +61,7 @@ public sealed class SettingsStore(string root)
     private sealed record Settings(int Schema, List<AccountConfig> Accounts);
 }
 public interface ISecretStore { string Read(AccountConfig config); }
-public sealed class DpapiSecretStore(string root) : ISecretStore
+public sealed class DpapiSecretStore(string root,Action<Exception>? onError=null) : ISecretStore
 {
     private string FilePath(Guid reference) => Path.Combine(root, "secrets", reference.ToString("N") + ".bin");
     public async Task<Guid> CreateAsync(string value, string provider, Guid slot)
@@ -85,7 +85,7 @@ public sealed class DpapiSecretStore(string root) : ISecretStore
             if(stored == null || stored.Provider != config.ProviderId || stored.Slot != config.SlotId) throw new InvalidDataException();
             return stored.Value;
         }
-        catch { throw new QueryException(FailureKind.CredentialUnreadable); }
+        catch(Exception error) {ErrorObserver.Report(onError,error); throw new QueryException(FailureKind.CredentialUnreadable); }
         finally { if(bytes != null) CryptographicOperations.ZeroMemory(bytes); }
     }
     public void Remove(Guid reference) { var path = FilePath(reference); if(File.Exists(path)) File.Delete(path); }
@@ -111,7 +111,7 @@ public sealed class DpapiSecretStore(string root) : ISecretStore
         finally { for(int i=0;i<value.Length;i++) Marshal.WriteByte(input.Data,i,0); Marshal.FreeHGlobal(input.Data); }
     }
 }
-public sealed class DiskSnapshotStore(string root) : ISnapshotStore
+public sealed class DiskSnapshotStore(string root,Action<Exception>? onError=null) : ISnapshotStore
 {
     private string FilePath(string binding)
     {
@@ -128,7 +128,7 @@ public sealed class DiskSnapshotStore(string root) : ISnapshotStore
             if(cache is not { Schema: 1 } || cache.Value.Binding != binding || cache.Value.Metrics.IsDefault || cache.Value.RetrievedAt > DateTimeOffset.UtcNow.AddMinutes(5)) return null;
             return cache.Value;
         }
-        catch { return null; }
+        catch(Exception error) {ErrorObserver.Report(onError,error); return null; }
     }
     public Task SaveAsync(UsageSnapshot snapshot) => AtomicFile.WriteAsync(FilePath(snapshot.Binding), JsonSerializer.SerializeToUtf8Bytes(new Cache(1, snapshot)));
     public Task RemoveAsync(string binding)

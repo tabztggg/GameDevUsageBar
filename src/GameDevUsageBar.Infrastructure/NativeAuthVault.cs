@@ -6,9 +6,9 @@ namespace GameDevUsageBar.Infrastructure;
 
 // Separate from API keys. Every document is encrypted by Windows DPAPI and bound
 // to its provider, account slot and random reference before it reaches disk.
-public sealed class NativeAuthVault(string root,NativeOAuthStore? native=null)
+public sealed class NativeAuthVault(string root,NativeOAuthStore? native=null,Action<Exception>? onError=null)
 {
-    private readonly NativeOAuthStore parser=native??new();
+    private readonly NativeOAuthStore parser=native??new(onError:onError);
     private string PathFor(Guid reference)=>Path.Combine(root,"native-auth",reference.ToString("N")+".bin");
     private string PendingPath(string provider)
     {
@@ -93,7 +93,7 @@ public sealed class NativeAuthVault(string root,NativeOAuthStore? native=null)
                 throw new QueryException(FailureKind.CredentialUnreadable);
             return envelope;
         }
-        catch(QueryException){throw;}catch{throw new QueryException(FailureKind.CredentialUnreadable);}
+        catch(QueryException){throw;}catch(Exception error){ErrorObserver.Report(onError,error);throw new QueryException(FailureKind.CredentialUnreadable);}
         finally{if(bytes is not null)CryptographicOperations.ZeroMemory(bytes);}
     }
     private async Task Write(Guid reference,Envelope envelope)

@@ -24,6 +24,8 @@ public static class ProviderCatalog
 public sealed class ApiAdapter(ProviderDefinition definition, Func<JsonElement, ImmutableArray<Metric>> parser) : IProviderAdapter
 {
     public ProviderDefinition Definition { get; } = definition;
+    public event Action<Exception>? ErrorObserved;
+    private void ReportError(Exception error){try{ErrorObserved?.Invoke(error);}catch{/* Diagnostic failures must not change parser outcomes. */}}
     public async Task<AdapterOutcome> RefreshAsync(AccountConfig config, IQueryClient queries, CancellationToken ct)
     {
         try
@@ -33,13 +35,13 @@ public sealed class ApiAdapter(ProviderDefinition definition, Func<JsonElement, 
             if(document.RootElement.TryGetProperty("error",out _)) return AdapterOutcome.Fail(FailureKind.BusinessError);
             return new(parser(document.RootElement),Plan:Definition.Id=="codex" ? UsageParsers.CodexPlan(document.RootElement) : null);
         }
-        catch(QueryException error) { return AdapterOutcome.Fail(error.Kind,error.RetryNotBefore); }
-        catch(JsonException) { return AdapterOutcome.Fail(FailureKind.SchemaMismatch); }
-        catch(InvalidOperationException) { return AdapterOutcome.Fail(FailureKind.SchemaMismatch); }
-        catch(KeyNotFoundException) { return AdapterOutcome.Fail(FailureKind.SchemaMismatch); }
-        catch(FormatException) { return AdapterOutcome.Fail(FailureKind.SchemaMismatch); }
-        catch(OverflowException) { return AdapterOutcome.Fail(FailureKind.SchemaMismatch); }
-        catch(ArgumentOutOfRangeException) { return AdapterOutcome.Fail(FailureKind.SchemaMismatch); }
+        catch(QueryException error) {ReportError(error); return AdapterOutcome.Fail(error.Kind,error.RetryNotBefore); }
+        catch(JsonException error) {ReportError(error); return AdapterOutcome.Fail(FailureKind.SchemaMismatch); }
+        catch(InvalidOperationException error) {ReportError(error); return AdapterOutcome.Fail(FailureKind.SchemaMismatch); }
+        catch(KeyNotFoundException error) {ReportError(error); return AdapterOutcome.Fail(FailureKind.SchemaMismatch); }
+        catch(FormatException error) {ReportError(error); return AdapterOutcome.Fail(FailureKind.SchemaMismatch); }
+        catch(OverflowException error) {ReportError(error); return AdapterOutcome.Fail(FailureKind.SchemaMismatch); }
+        catch(ArgumentOutOfRangeException error) {ReportError(error); return AdapterOutcome.Fail(FailureKind.SchemaMismatch); }
     }
 }
 public sealed class HoldAdapter(ProviderDefinition definition) : IProviderAdapter

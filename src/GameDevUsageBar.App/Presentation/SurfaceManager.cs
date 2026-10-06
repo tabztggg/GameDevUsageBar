@@ -11,6 +11,7 @@ public sealed class SurfaceManager : IDisposable
     private readonly ProviderStateHub hub;
     private readonly PresentationPreferencesService preferences;
     private readonly Action exit;
+    private readonly Action<string>? exitSource;
     private readonly PopupToggleGuard toggle = new();
     private WidgetPreferences? lastWidget;
     private DisplaySettingsWindow? displaySettings;
@@ -19,25 +20,27 @@ public sealed class SurfaceManager : IDisposable
     public MainWindow Overview { get; }
     public TrayPopupWindow Panel { get; }
     public WidgetWindow Widget { get; }
-    public SurfaceManager(ApplicationHost host,ProviderStateHub hub,PresentationPreferencesService preferences,MainWindow overview,Action exit)
+    public SurfaceManager(ApplicationHost host,ProviderStateHub hub,PresentationPreferencesService preferences,MainWindow overview,Action exit,Action<string>? exitSource=null)
     {
-        this.host=host;this.hub=hub;this.preferences=preferences;this.exit=exit;Overview=overview;
+        this.host=host;this.hub=hub;this.preferences=preferences;this.exit=exit;this.exitSource=exitSource;Overview=overview;
         Panel=new(hub);Widget=new(hub,preferences);
         Widget.NetworkRequested+=ShowNetwork;
         overview.NetworkRequested+=ShowNetwork;
         Widget.SettingsRequested+=ShowSettings;Widget.ProviderRequested+=ShowProvider;
         Panel.DismissRequested+=DismissFromInput;
         Panel.OverviewRequested+=ShowOverview;Panel.SettingsRequested+=ShowSettings;
-        Panel.WidgetRequested+=ShowWidget;Panel.ExitRequested+=exit;Panel.AccountRequested+=ShowAccount;
+        Panel.WidgetRequested+=ShowWidget;Panel.ExitRequested+=PanelExit;Panel.AccountRequested+=ShowAccount;
         Panel.AccountSwitchRequested+=SelectAccount;Panel.ManageAccountsRequested+=ShowAccounts;
         overview.DisplaySettingsRequested+=ShowSettings;
-        overview.ExitRequested+=exit;
+        overview.ExitRequested+=OverviewExit;
         preferences.Changed+=PreferencesChanged;
         SystemEvents.DisplaySettingsChanged+=DisplayChanged;
         SystemEvents.UserPreferenceChanged+=UserPreferenceChanged;
         SystemEvents.PowerModeChanged+=PowerChanged;
         PreferencesChanged();
     }
+    private void PanelExit(){if(exitSource is null)exit();else exitSource("tray_popup_exit");}
+    private void OverviewExit(){if(exitSource is null)exit();else exitSource("overview_exit");}
     public void TrayPointerDown()=>toggle.PointerDown(NativeWindows.InputToken,Panel.IsVisible);
     public void TrayClick()
     {
@@ -74,7 +77,7 @@ public sealed class SurfaceManager : IDisposable
     public void ShowAccounts(string id){ShowOverview();Overview.ShowAccounts(id);}
     public async void SelectAccount(string id,Guid slot)
     {
-        try{await host.SelectAccountAsync(id,slot);}catch{Overview.ReportLocalError();}
+        try{await host.SelectAccountAsync(id,slot);}catch(Exception error){host.RuntimeLog?.RecordException("handled_exception",error);Overview.ReportLocalError();}
     }
     public void ShowNetwork()
     {
@@ -128,7 +131,7 @@ public sealed class SurfaceManager : IDisposable
     public void Dispose()
     {
         if(disposed)return;disposed=true;
-        preferences.Changed-=PreferencesChanged;Overview.DisplaySettingsRequested-=ShowSettings;Overview.ExitRequested-=exit;
+        preferences.Changed-=PreferencesChanged;Overview.DisplaySettingsRequested-=ShowSettings;Overview.ExitRequested-=OverviewExit;Panel.ExitRequested-=PanelExit;
         Widget.NetworkRequested-=ShowNetwork;Overview.NetworkRequested-=ShowNetwork;networkPanel?.Close();
         Widget.SettingsRequested-=ShowSettings;Widget.ProviderRequested-=ShowProvider;
         Panel.AccountSwitchRequested-=SelectAccount;Panel.ManageAccountsRequested-=ShowAccounts;

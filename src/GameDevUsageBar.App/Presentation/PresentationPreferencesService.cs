@@ -5,7 +5,7 @@ using GameDevUsageBar.Infrastructure;
 namespace GameDevUsageBar.App.Presentation;
 
 // Deliberately has no account, coordinator, credential or query-client reference.
-public sealed class PresentationPreferencesService(PresentationStore store, PresentationPreferences initial) : IDisposable
+public sealed class PresentationPreferencesService(PresentationStore store, PresentationPreferences initial,Action<Exception>? onError=null) : IDisposable
 {
     private readonly SemaphoreSlim gate = new(1, 1);
     private CancellationTokenSource? debounce;
@@ -31,6 +31,7 @@ public sealed class PresentationPreferencesService(PresentationStore store, Pres
     {
         try { await Task.Delay(500, token).ConfigureAwait(false); await FlushAsync().ConfigureAwait(false); }
         catch(OperationCanceledException) { }
+        catch(Exception error) {ReportError(error);}
     }
     public async Task FlushAsync()
     {
@@ -43,7 +44,8 @@ public sealed class PresentationPreferencesService(PresentationStore store, Pres
             await store.SaveAsync(snapshot).ConfigureAwait(false);
             Interlocked.Exchange(ref savedVersion, savingVersion);
             if(!disposed && Notice.Length != 0) { Notice = ""; Changed?.Invoke(); }
-        } catch {
+        } catch(Exception error) {
+            ReportError(error);
             Notice = "Layout could not be saved. Current session changes remain active; no automatic retry is scheduled.";
             if(!disposed) Changed?.Invoke();
         } finally { gate.Release(); }
@@ -57,8 +59,13 @@ public sealed class PresentationPreferencesService(PresentationStore store, Pres
             await store.ResetAsync(defaults).ConfigureAwait(false);
             Current = defaults; Interlocked.Increment(ref version); Interlocked.Exchange(ref savedVersion, Interlocked.Read(ref version));
             Notice = "";
-        } finally { gate.Release(); }
+        } catch(Exception error) {ReportError(error);throw;}
+        finally { gate.Release(); }
         Changed?.Invoke();
+    }
+    private void ReportError(Exception error)
+    {
+        try{onError?.Invoke(error);}catch{/* Reporting an error must not change the persistence outcome. */}
     }
     public void Dispose() { disposed = true; debounce?.Cancel(); debounce?.Dispose(); }
 }

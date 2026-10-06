@@ -3,7 +3,7 @@ using GameDevUsageBar.Core.Presentation;
 
 namespace GameDevUsageBar.Infrastructure;
 
-public sealed class PresentationStore(string root)
+public sealed class PresentationStore(string root,Action<Exception>? onError=null)
 {
     private readonly string path = Path.Combine(root, "presentation.json");
     private readonly SemaphoreSlim writing = new(1, 1);
@@ -16,7 +16,7 @@ public sealed class PresentationStore(string root)
             using var json = JsonDocument.Parse(await File.ReadAllBytesAsync(path).ConfigureAwait(false));
             if(!json.RootElement.TryGetProperty("schema", out var schema) || schema.GetInt32() != 1) throw new InvalidDataException();
             return (JsonSerializer.Deserialize<PresentationPreferences>(json, Options) ?? throw new InvalidDataException()).Validate();
-        } catch { ReadOnly = true; return null; }
+        } catch(Exception error) {ErrorObserver.Report(onError,error); ReadOnly = true; return null; }
     }
     public async Task SaveAsync(PresentationPreferences preferences)
     {

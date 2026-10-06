@@ -21,14 +21,15 @@ public sealed class ProviderQueryClient : IQueryClient,IAuthMaintenance,IDisposa
     private readonly HttpClient claudeLocal;
     private readonly NativeClaudeRenewal? renewal;
     private readonly TimeProvider clock;
+    private readonly Action<Exception>? onError;
     private readonly List<SafeEvent> events=[];
     public IReadOnlyList<SafeEvent> Events {get{lock(events)return legacy.Events.Concat(events).OrderBy(e=>e.At).TakeLast(200).ToArray();}}
     public NativeOAuthStore Native=>native;
     public NativeAuthVault? NativeVault {get;}
-    public ProviderQueryClient(ISecretStore secrets,IEnumerable<ProviderDefinition> definitions,HttpMessageHandler? handler=null,NativeOAuthStore? native=null,TimeProvider? time=null,NativeAuthVault? nativeVault=null,NativeClaudeRenewal? renewal=null)
+    public ProviderQueryClient(ISecretStore secrets,IEnumerable<ProviderDefinition> definitions,HttpMessageHandler? handler=null,NativeOAuthStore? native=null,TimeProvider? time=null,NativeAuthVault? nativeVault=null,NativeClaudeRenewal? renewal=null,Action<Exception>? onError=null)
     {
-        this.secrets=secrets;catalog=definitions.ToDictionary(d=>d.Id);clock=time ?? TimeProvider.System;this.native=native ?? new();NativeVault=nativeVault;this.renewal=renewal;
-        legacy=new(secrets,catalog.Values,handler is null?null:new SharedHandler(handler),clock);
+        this.secrets=secrets;catalog=definitions.ToDictionary(d=>d.Id);clock=time ?? TimeProvider.System;this.native=native ?? new();NativeVault=nativeVault;this.renewal=renewal;this.onError=onError;
+        legacy=new(secrets,catalog.Values,handler is null?null:new SharedHandler(handler),clock,onError);
         client=new(handler ?? new SocketsHttpHandler{AllowAutoRedirect=false,UseCookies=false,AutomaticDecompression=DecompressionMethods.GZip|DecompressionMethods.Deflate}){Timeout=Timeout.InfiniteTimeSpan};
         claudeLocal=new(handler is null?NativeClaudeRenewal.CreateSystemProxyHandler():new SharedHandler(handler)){Timeout=Timeout.InfiniteTimeSpan};
     }
@@ -72,9 +73,9 @@ public sealed class ProviderQueryClient : IQueryClient,IAuthMaintenance,IDisposa
                     var usage=await Send("codex",new("https://chatgpt.com/backend-api/wham/usage"),HttpMethod.Get,headers,null,"application/json",65536,deadline.Token);
                     using var doc=JsonDocument.Parse(usage);JsonElement? reset=null;string? resetError=null;
                     try {var bytes=await Send("codex",new("https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"),HttpMethod.Get,headers,null,"application/json",65536,deadline.Token);using var inventory=JsonDocument.Parse(bytes);reset=inventory.RootElement.Clone();}
-                    catch(QueryException e){resetError=e.Kind.ToString();}catch(JsonException){resetError="SchemaMismatch";}
-                    catch(HttpRequestException){resetError="Network";}catch(IOException){resetError="Network";}
-                    catch(OperationCanceledException)when(!ct.IsCancellationRequested){resetError="Timeout";}
+                    catch(QueryException e){ErrorObserver.Report(onError,e);resetError=e.Kind.ToString();}catch(JsonException error){ErrorObserver.Report(onError,error);resetError="SchemaMismatch";}
+                    catch(HttpRequestException error){ErrorObserver.Report(onError,error);resetError="Network";}catch(IOException error){ErrorObserver.Report(onError,error);resetError="Network";}
+                    catch(OperationCanceledException error)when(!ct.IsCancellationRequested){ErrorObserver.Report(onError,error);resetError="Timeout";}
                     return JsonSerializer.SerializeToUtf8Bytes(new{usage=doc.RootElement,reset_credits=reset,reset_credits_status=resetError});
                 }
                 case "claude":
@@ -97,10 +98,10 @@ public sealed class ProviderQueryClient : IQueryClient,IAuthMaintenance,IDisposa
                 default:throw new QueryException(FailureKind.Policy);
             }
         }
-        catch(OperationCanceledException)when(!ct.IsCancellationRequested){throw new QueryException(FailureKind.Timeout);}
-        catch(HttpRequestException){throw new QueryException(FailureKind.Network);}
-        catch(IOException){throw new QueryException(FailureKind.Network);}
-        catch(JsonException){throw new QueryException(FailureKind.SchemaMismatch);}
+        catch(OperationCanceledException error)when(!ct.IsCancellationRequested){ErrorObserver.Report(onError,error);throw new QueryException(FailureKind.Timeout);}
+        catch(HttpRequestException error){ErrorObserver.Report(onError,error);throw new QueryException(FailureKind.Network);}
+        catch(IOException error){ErrorObserver.Report(onError,error);throw new QueryException(FailureKind.Network);}
+        catch(JsonException error){ErrorObserver.Report(onError,error);throw new QueryException(FailureKind.SchemaMismatch);}
     }
     private static Dictionary<string,string> Bearer(string token)=>new(){["Authorization"]="Bearer "+token};
     public static string Cookie(string value)

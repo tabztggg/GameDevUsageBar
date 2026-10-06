@@ -27,12 +27,13 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        if(args.FirstOrDefault()=="--runtime-child")return RuntimeLifecycleChecks.RunChild(args);
         var app=new System.Windows.Application {ShutdownMode=ShutdownMode.OnExplicitShutdown};
         app.Resources.MergedDictionaries.Add(new ResourceDictionary {Source=new Uri("pack://application:,,,/GameDevUsageBar;component/Themes/Resources.xaml")});ThemeService.Apply();
         SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext());
         app.Dispatcher.BeginInvoke(async () =>
         {
-            if (!args.Any(a => a is "--multi-account" or "--overview-design" or "--compact-design"))
+            if (!args.Any(a => a is "--multi-account" or "--overview-design" or "--compact-design" or "--runtime-lifecycle"))
             {
                 await RunAsync(app, args.Contains("--interactive"));
                 return;
@@ -42,7 +43,11 @@ internal static class Program
                 var qa = Environment.GetEnvironmentVariable("GAMEDEVUSAGEBAR_QA_ROOT")
                     ?? Path.Combine(Path.GetTempPath(), "WorkBuddy-Tasks", "work", "gamedevusagebar-multiaccount-20261004", "workspace");
                 Directory.CreateDirectory(qa);
-                if (args.Contains("--multi-account"))
+                if (args.Contains("--runtime-lifecycle")){
+                    await RuntimeLifecycleChecks.Run(qa);
+                    await DiagnosticsExportChecks.Run(qa);
+                }
+                else if (args.Contains("--multi-account"))
                 {
                     await MultiAccountUiChecks.Run(qa);
                     await NativeHostChecks.Run(qa);

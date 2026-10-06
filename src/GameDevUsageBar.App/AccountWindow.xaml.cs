@@ -103,7 +103,7 @@ public partial class AccountWindow : Window
         FirefoxFields.Visibility=firefox?Visibility.Visible:Visibility.Collapsed;ImportCookie.Visibility=firefox?Visibility.Visible:Visibility.Collapsed;
         if(firefox)
         {
-            if(firefoxProfiles is null)try{firefoxProfiles=WebsiteSession.Profiles();}catch{firefoxProfiles=[];}
+            if(firefoxProfiles is null)try{firefoxProfiles=WebsiteSession.Profiles();}catch(Exception error){host.RuntimeLog?.RecordException("handled_exception",error);firefoxProfiles=[];}
             ProfileSelector.ItemsSource=firefoxProfiles;if(ProfileSelector.SelectedItem is null&&firefoxProfiles.Length>0)ProfileSelector.SelectedIndex=0;
             ImportCookie.IsEnabled=firefoxProfiles.Length>0&&!importingCookie;
         }
@@ -113,7 +113,7 @@ public partial class AccountWindow : Window
     private void OpenLogin_Click(object sender,RoutedEventArgs e)
     {
         try{Process.Start(WebsiteSession.LoginCommand(definition.Id,BrowserSelector.SelectedValue as string ?? "firefox",ProfileSelector.SelectedItem as FirefoxProfile));}
-        catch{SetFeedback("Could not open the selected browser. Choose an installed browser or open the website yourself.");}
+        catch(Exception error){host.RuntimeLog?.RecordException("handled_exception",error);SetFeedback("Could not open the selected browser. Choose an installed browser or open the website yourself.");}
     }
     private async void ImportCookie_Click(object sender,RoutedEventArgs e)
     {
@@ -125,7 +125,7 @@ public partial class AccountWindow : Window
             if(!closed){SecretInput.Password=cookie;SetFeedback("Cookies imported into the protected input. Click Save, then Refresh to verify the login and retrieve usage.");}
         }
         catch(InvalidOperationException){if(!closed)SetFeedback("No website cookies found in this Firefox profile. Sign in first, then import again.");}
-        catch {if(!closed)SetFeedback("Could not read Firefox cookies. Close Firefox and try importing again, or paste the Cookie header manually.");}
+        catch(Exception error) {host.RuntimeLog?.RecordException("handled_exception",error);if(!closed)SetFeedback("Could not read Firefox cookies. Close Firefox and try importing again, or paste the Cookie header manually.");}
         finally
         {
             importingCookie=false;if(!closed){Save.IsEnabled=!host.Settings.ReadOnly;Remove.IsEnabled=!host.Settings.ReadOnly;BrowserSelector.IsEnabled=true;ProfileSelector.IsEnabled=true;OpenLogin.IsEnabled=true;UpdateCookieBrowser();}
@@ -149,12 +149,12 @@ public partial class AccountWindow : Window
                 await host.SaveAsync(next with {Label=string.IsNullOrWhiteSpace(AccountLabel.Text)?"Personal":AccountLabel.Text.Trim(),IntervalMinutes=minutes,Enabled=Enabled.IsChecked==true,DemoScenario=Scenario.SelectedValue as string ?? "Success"},key.Length>0&&next.SourceMode is not ("local-oauth" or "saved-oauth")?key:null);
             SecretInput.Clear(); Saved=true; Close();
         }
-        catch(QueryException error){SetFeedback(CardPresentation.Failure(error.Kind));Save.IsEnabled=true;Remove.IsEnabled=true;}
-        catch {SetFeedback("Could not save local settings or protect the key. The key was not logged."); Save.IsEnabled=true; Remove.IsEnabled=true;}
+        catch(QueryException error){host.RuntimeLog?.RecordException("handled_exception",error);SetFeedback(CardPresentation.Failure(error.Kind));Save.IsEnabled=true;Remove.IsEnabled=true;}
+        catch(Exception error) {host.RuntimeLog?.RecordException("handled_exception",error);SetFeedback("Could not save local settings or protect the key. The key was not logged."); Save.IsEnabled=true; Remove.IsEnabled=true;}
     }
     private async void Remove_Click(object sender,RoutedEventArgs e)
     {
         if(System.Windows.MessageBox.Show(this,L.T("Remove this app's saved key and cached values? The source will be disabled."),L.T("Remove saved key"),MessageBoxButton.YesNo,MessageBoxImage.Question)!=MessageBoxResult.Yes)return;
-        try {await host.RemoveAsync(definition.Id,config.SlotId);Saved=true;Close();} catch {SetFeedback("Could not remove the saved key.");}
+        try {await host.RemoveAsync(definition.Id,config.SlotId);Saved=true;Close();} catch(Exception error) {host.RuntimeLog?.RecordException("handled_exception",error);SetFeedback("Could not remove the saved key.");}
     }
 }

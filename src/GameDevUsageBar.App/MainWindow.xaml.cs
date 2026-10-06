@@ -57,7 +57,7 @@ public partial class MainWindow : Window
     private async void Account_Selected(object? sender,AccountSelectionEventArgs e)
     {
         e.Handled=true;
-        try{await host.SelectAccountAsync(e.ProviderId,e.SlotId);}catch{ReportLocalError();}
+        try{await host.SelectAccountAsync(e.ProviderId,e.SlotId);}catch(Exception error){host.RuntimeLog?.RecordException("handled_exception",error);ReportLocalError();}
     }
     private void Account_Manage(object sender,RoutedEventArgs e)
     {
@@ -131,7 +131,7 @@ public partial class MainWindow : Window
     {
         if(initializing || !IsInitialized || !models.Any()) return;
         try { var config=host.Coordinator.Get("demo").Config; await host.SaveAsync(config with {Enabled=DemoToggle.IsChecked==true}); Reorder(); if(DemoToggle.IsChecked==true) await host.Coordinator.RefreshAsync("demo"); }
-        catch { System.Windows.MessageBox.Show(this,L.T("Could not save demo settings."),"GameDevUsageBar"); }
+        catch(Exception error) { host.RuntimeLog?.RecordException("handled_exception",error);System.Windows.MessageBox.Show(this,L.T("Could not save demo settings."),"GameDevUsageBar"); }
     }
     private Task MoveAsync(string id,int delta)
     {
@@ -151,18 +151,54 @@ public partial class MainWindow : Window
     private void Export_Click(object sender,RoutedEventArgs e)=>ExportDiagnostics();
     public void ExportDiagnostics()
     {
-        var preview=new Window {Title="GameDevUsageBar · Diagnostic preview",Width=700,Height=540,Owner=this};
+        var preview=new Window {Title="GameDevUsageBar · Diagnostic preview",Width=Math.Min(760,SystemParameters.WorkArea.Width-30),Height=Math.Min(600,SystemParameters.WorkArea.Height-30),Owner=this,WindowStartupLocation=WindowStartupLocation.CenterOwner};
         LanguageChoice.Bind(preview,Window.TitleProperty,"GameDevUsageBar · Diagnostic preview");
         var dock=new DockPanel {Margin=new Thickness(20)};
-        var save=new Button {Content="Save locally…",HorizontalAlignment=HorizontalAlignment.Right}; DockPanel.SetDock(save,Dock.Bottom);
-        LanguageChoice.Bind(save,ContentControl.ContentProperty,"Save locally…");
+        var hasRuntimeLog=host.RuntimeLog is not null;
+        var notice=new TextBlock {TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,12)};
+        LanguageChoice.Bind(notice,TextBlock.TextProperty,hasRuntimeLog
+            ? "Preview the current diagnostic summary below. Saving creates a ZIP with a filtered JSON summary and bounded runtime logs. Logs are kept in %LOCALAPPDATA%\\GameDevBar\\logs. No account files, cached balances, credentials, or native login files are included. Nothing is uploaded."
+            : "Preview the current diagnostic summary below. Runtime logs are unavailable in this session; saving creates a JSON file only. Nothing is uploaded.");
+        DockPanel.SetDock(notice,Dock.Top);dock.Children.Add(notice);
+        var save=new Button {HorizontalAlignment=HorizontalAlignment.Right}; DockPanel.SetDock(save,Dock.Bottom);
+        LanguageChoice.Bind(save,ContentControl.ContentProperty,hasRuntimeLog?"Save diagnostic ZIP…":"Save diagnostic JSON…");
         var text=host.Diagnostics();
         save.Click+=async (_,_)=>
         {
-            var dialog=new Microsoft.Win32.SaveFileDialog {FileName="GameDevUsageBar-diagnostics.json",Filter="JSON|*.json"};
-            if(dialog.ShowDialog(preview)==true) { try { await System.IO.File.WriteAllTextAsync(dialog.FileName,text); preview.Close(); } catch { System.Windows.MessageBox.Show(preview,L.T("Could not save diagnostics.")); } }
+            var dialog=new Microsoft.Win32.SaveFileDialog {
+                FileName=$"GameDevUsageBar-diagnostics-{DateTime.Now:yyyyMMdd-HHmmss}"+(hasRuntimeLog?".zip":".json"),
+                Filter=hasRuntimeLog?L.T("Diagnostic ZIP archive|*.zip"):L.T("Diagnostic JSON file|*.json"),
+                DefaultExt=hasRuntimeLog?".zip":".json",AddExtension=true,OverwritePrompt=!hasRuntimeLog
+            };
+            if(hasRuntimeLog)dialog.FileOk+=(_,args)=>
+            {
+                if(!System.IO.File.Exists(dialog.FileName))return;
+                args.Cancel=true;
+                System.Windows.MessageBox.Show(preview,L.T("Choose a new filename. Diagnostic archives do not overwrite existing files."),"GameDevUsageBar");
+            };
+            if(dialog.ShowDialog(preview)!=true)return;
+            save.IsEnabled=false;
+            try
+            {
+                if(host.RuntimeLog is { } runtimeLog)
+                {
+                    if(!await Task.Run(()=>runtimeLog.ExportBundle(dialog.FileName,text)))
+                    {
+                        System.Windows.MessageBox.Show(preview,L.T("Could not save diagnostics. Check the selected folder and available disk space."),"GameDevUsageBar");
+                        return;
+                    }
+                }
+                else await System.IO.File.WriteAllTextAsync(dialog.FileName,text);
+                preview.Close();
+            }
+            catch(Exception error)
+            {
+                host.RuntimeLog?.RecordException("export_failed",error);
+                System.Windows.MessageBox.Show(preview,L.T("Could not save diagnostics. Check the selected folder and available disk space."),"GameDevUsageBar");
+            }
+            finally {save.IsEnabled=true;}
         };
-        dock.Children.Add(save); dock.Children.Add(new TextBox {Text=text,IsReadOnly=true,TextWrapping=TextWrapping.Wrap,VerticalScrollBarVisibility=ScrollBarVisibility.Auto});
+        dock.Children.Add(save); dock.Children.Add(new TextBox {Text=text,IsReadOnly=true,TextWrapping=TextWrapping.Wrap,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,FontFamily=new System.Windows.Media.FontFamily("Consolas")});
         preview.Content=dock; preview.ShowDialog();
     }
 }

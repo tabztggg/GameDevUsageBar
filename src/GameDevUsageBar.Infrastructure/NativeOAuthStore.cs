@@ -8,7 +8,7 @@ namespace GameDevUsageBar.Infrastructure;
 // Reads only known, explicitly selected CLI credential files. Never starts a CLI,
 // refreshes tokens, writes native credentials, or scans browser/account stores.
 public sealed record NativeOAuth(string Token,string AccountId,string Identity);
-public sealed class NativeOAuthStore(string? testHome=null,TimeProvider? clock=null)
+public sealed class NativeOAuthStore(string? testHome=null,TimeProvider? clock=null,Action<Exception>? onError=null)
 {
     private readonly TimeProvider time=clock ?? TimeProvider.System;
     public string PathFor(string id)
@@ -38,7 +38,7 @@ public sealed class NativeOAuthStore(string? testHome=null,TimeProvider? clock=n
             if(stream.Length is <=0 or >65536)throw new QueryException(FailureKind.CredentialUnreadable);
             var bytes=new byte[(int)stream.Length];stream.ReadExactly(bytes);return bytes;
         }
-        catch(QueryException){throw;}catch{throw new QueryException(FailureKind.CredentialUnreadable);}
+        catch(QueryException){throw;}catch(Exception error){ErrorObserver.Report(onError,error);throw new QueryException(FailureKind.CredentialUnreadable);}
     }
     public NativeOAuth ParseDocument(string id,byte[] bytes,bool validateExpiry=true)
     {
@@ -81,7 +81,7 @@ public sealed class NativeOAuthStore(string? testHome=null,TimeProvider? clock=n
             return new(token,account,identity);
         }
         catch(QueryException){throw;}
-        catch{throw new QueryException(FailureKind.CredentialUnreadable);}
+        catch(Exception error){ErrorObserver.Report(onError,error);throw new QueryException(FailureKind.CredentialUnreadable);}
     }
     private static string Text(JsonElement node,string key)=>node.TryGetProperty(key,out var v)&&v.ValueKind==JsonValueKind.String?v.GetString()??"":"";
 }

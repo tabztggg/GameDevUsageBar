@@ -14,6 +14,8 @@ public sealed class RefreshCoordinator(IQueryClient queries, ISnapshotStore snap
     public event Action<string, ProviderState>? Changed;
     public event Action<string, ProviderState>? AccountChanged;
     public event Action<string, Guid>? AccountRemoved;
+    public event Action<Exception>? ErrorObserved;
+    private void ReportError(Exception error){try{ErrorObserved?.Invoke(error);}catch{/* Diagnostics cannot change refresh behavior. */}}
     private readonly record struct AccountKey(string ProviderId, Guid SlotId);
     private sealed class Entry(IProviderAdapter adapter, AccountConfig config)
     {
@@ -118,7 +120,7 @@ public sealed class RefreshCoordinator(IQueryClient queries, ISnapshotStore snap
                     e.State=e.State with {LastSuccess=cached,FromCache=true};
             }
         }
-        catch{lock(e.Sync)if(!e.Removed&&e.Epoch==epoch)e.State=e.State with {Failure=FailureKind.LocalStorage};}
+        catch(Exception error){ReportError(error);lock(e.Sync)if(!e.Removed&&e.Epoch==epoch)e.State=e.State with {Failure=FailureKind.LocalStorage};}
         Notify(key);
     }
     public Task RefreshAsync(string id,bool manual=true)
@@ -178,9 +180,9 @@ public sealed class RefreshCoordinator(IQueryClient queries, ISnapshotStore snap
                 }
                 outcome=await adapter.RefreshAsync(config,queries,source.Token);
             }
-            catch(QueryException error){outcome=AdapterOutcome.Fail(error.Kind,error.RetryNotBefore);}
+            catch(QueryException error){ReportError(error);outcome=AdapterOutcome.Fail(error.Kind,error.RetryNotBefore);}
             catch(OperationCanceledException){outcome=AdapterOutcome.Fail(FailureKind.Cancelled);}
-            catch{outcome=AdapterOutcome.Fail(FailureKind.SchemaMismatch);}
+            catch(Exception error){ReportError(error);outcome=AdapterOutcome.Fail(FailureKind.SchemaMismatch);}
             UsageSnapshot? success=null;
             lock(e.Sync)
             {
@@ -210,7 +212,7 @@ public sealed class RefreshCoordinator(IQueryClient queries, ISnapshotStore snap
                     bool current;lock(e.Sync)current=!e.Removed&&e.Epoch==epoch&&e.State.Config.Binding(e.Adapter.Definition)==success.Binding;
                     if(!current)await snapshots.RemoveAsync(success.Binding);
                 }
-                catch{lock(e.Sync)if(!e.Removed&&e.Epoch==epoch)e.State=e.State with {Failure=FailureKind.LocalStorage};}
+                catch(Exception error){ReportError(error);lock(e.Sync)if(!e.Removed&&e.Epoch==epoch)e.State=e.State with {Failure=FailureKind.LocalStorage};}
             }
             Notify(key);
         }

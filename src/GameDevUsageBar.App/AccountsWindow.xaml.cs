@@ -48,8 +48,8 @@ public partial class AccountsWindow : Window
     {
         if(busy)return;busy=true;UpdateActions();
         try{await action();}
-        catch(QueryException error){SetFeedback(GameDevUsageBar.Core.Presentation.CardPresentation.Failure(error.Kind));}
-        catch{SetFeedback("The account operation could not finish. No credentials were logged.");}
+        catch(QueryException error){host.RuntimeLog?.RecordException("handled_exception",error);SetFeedback(GameDevUsageBar.Core.Presentation.CardPresentation.Failure(error.Kind));}
+        catch(Exception error){host.RuntimeLog?.RecordException("handled_exception",error);SetFeedback("The account operation could not finish. No credentials were logged.");}
         finally{busy=false;if(!closed)Rebind();}
     }
     private async void Add_Click(object sender,RoutedEventArgs e)=>await Operate(async()=>{

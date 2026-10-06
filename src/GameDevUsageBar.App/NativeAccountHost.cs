@@ -30,12 +30,12 @@ public sealed partial class ApplicationHost
             unknownNativeWrites.Remove(provider);
             return NativeLoginSwitcher.Result(NativeAccountStatus.Captured);
         }
-        catch(QueryException error){return NativeLoginSwitcher.Result(error.Kind switch {FailureKind.CredentialExpired=>NativeAccountStatus.Expired,FailureKind.CredentialMissing=>NativeAccountStatus.Missing,_=>NativeAccountStatus.Invalid});}
-        catch{return NativeLoginSwitcher.Result(NativeAccountStatus.Failed);}
+        catch(QueryException error){RuntimeLog?.RecordException("handled_exception",error);return NativeLoginSwitcher.Result(error.Kind switch {FailureKind.CredentialExpired=>NativeAccountStatus.Expired,FailureKind.CredentialMissing=>NativeAccountStatus.Missing,_=>NativeAccountStatus.Invalid});}
+        catch(Exception error){RuntimeLog?.RecordException("handled_exception",error);return NativeLoginSwitcher.Result(NativeAccountStatus.Failed);}
         finally
         {
             if(reference is {} unused&&!Accounts.Any(account=>account.NativeAuthRef==unused))
-            {try{Queries.NativeVault?.Remove(unused);}catch{/* The inaccessible encrypted blob has no settings reference. */}}
+            {try{Queries.NativeVault?.Remove(unused);}catch(Exception error){RuntimeLog?.RecordException("handled_exception",error);/* The inaccessible encrypted blob has no settings reference. */}}
             if(document is not null)CryptographicOperations.ZeroMemory(document);
             if(current is not null)CryptographicOperations.ZeroMemory(current);
             nativeActions.Release();
@@ -53,18 +53,18 @@ public sealed partial class ApplicationHost
             try
             {
                 var target=GetAccounts(provider).Single(account=>account.SlotId==slot);
-                result=await new NativeLoginSwitcher(Queries.Native,vault).SwitchAsync(target,GetAccounts(provider));
+                result=await new NativeLoginSwitcher(Queries.Native,vault,onError:error=>RuntimeLog?.RecordException("handled_exception",error)).SwitchAsync(target,GetAccounts(provider));
             }
             finally{saving.Release();}
             if(result.Status==NativeAccountStatus.Unknown)unknownNativeWrites.Add(provider);
             if(result.Succeeded)
             {
                 try{await SelectAccountAsync(provider,slot);}
-                catch{return result with {MessageKey="CLI auth file verified, but the displayed account could not be saved. Check the selected account in settings; do not repeat the CLI switch."};}
+                catch(Exception error){RuntimeLog?.RecordException("handled_exception",error);return result with {MessageKey="CLI auth file verified, but the displayed account could not be saved. Check the selected account in settings; do not repeat the CLI switch."};}
             }
             return result;
         }
-        catch{return NativeLoginSwitcher.Result(NativeAccountStatus.Failed);}
+        catch(Exception error){RuntimeLog?.RecordException("handled_exception",error);return NativeLoginSwitcher.Result(NativeAccountStatus.Failed);}
         finally{nativeActions.Release();}
     }
 }
