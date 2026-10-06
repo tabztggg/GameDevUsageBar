@@ -173,7 +173,8 @@ public sealed partial class ApplicationHost : IAsyncDisposable
     public async Task StartQuotaApiAsync(Func<NetworkSpeedSnapshot>? network=null)
     {
         if(QuotaApi is not null)return;
-        var api=new QuotaApiServer(()=>UsageExporter.Export(Adapters,Coordinator,DateTimeOffset.UtcNow),network,()=>UsageExporter.Accounts(Adapters,Coordinator,DateTimeOffset.UtcNow),ReportHandledError);
+        var api=new QuotaApiServer(()=>UsageExporter.Export(Adapters,Coordinator,DateTimeOffset.UtcNow),network,()=>UsageExporter.Accounts(Adapters,Coordinator,DateTimeOffset.UtcNow),ReportHandledError,
+            runtime:RuntimeLog is {} runtimeLog?runtimeLog.GetSummary:null);
         try {await api.StartAsync();QuotaApi=api;QuotaApiStatus="Listening";}
         catch(Exception error) {RuntimeLog?.RecordException("handled_exception",error);await api.DisposeAsync();QuotaApiStatus="Unavailable";}
     }

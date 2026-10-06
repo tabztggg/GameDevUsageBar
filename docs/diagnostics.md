@@ -16,6 +16,8 @@ If Windows prevents writes or the disk is unavailable, diagnostics report loggin
 
 The overview warns when the current session cannot save logs. The diagnostic preview reports `FirstLoggingFailure`, `LastLoggingFailure`, and a bounded failure count; the ZIP uses camelCase field names. Each failure contains only a fixed operation stage, exception type, HResult, and UTC time. Messages and paths are excluded. This evidence stays in memory when disk logging fails; a diagnostic ZIP can preserve it and may also contain older session logs. It does not prove that the current session has a complete saved log.
 
+The installed app also reports this safe summary in the optional `runtime` field of `GET /v1/health`, using snake_case names such as `logging_available` and `first_logging_failure`. Reading it does not refresh a provider or access credentials. API readiness and saved-log availability are separate states.
+
 ## Events and their meaning
 
 | Event | What it establishes |

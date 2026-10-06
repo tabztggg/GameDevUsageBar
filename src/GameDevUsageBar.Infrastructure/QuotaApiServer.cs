@@ -12,7 +12,7 @@ using Microsoft.Extensions.Logging;
 
 namespace GameDevUsageBar.Infrastructure;
 
-public sealed class QuotaApiServer(Func<UsageExport> export,Func<NetworkSpeedSnapshot>? network=null,Func<AccountUsageExport>? accounts=null,Action<Exception>? onError=null) : IAsyncDisposable
+public sealed class QuotaApiServer(Func<UsageExport> export,Func<NetworkSpeedSnapshot>? network=null,Func<AccountUsageExport>? accounts=null,Action<Exception>? onError=null,Func<RuntimeDiagnosticsSummary>? runtime=null) : IAsyncDisposable
 {
     public const int DefaultPort=17864;
     public const string DefaultAddress="http://127.0.0.1:17864";
@@ -55,7 +55,11 @@ public sealed class QuotaApiServer(Func<UsageExport> export,Func<NetworkSpeedSna
         if(context.Request.Method!="GET"){context.Response.Headers.Allow="GET";await Reply(405,new {error="read_only_get_required"});return;}
         if(context.Request.QueryString.HasValue||context.Request.ContentLength>0||context.Request.Headers.ContainsKey("Transfer-Encoding")){await Reply(400,new {error="query_and_body_not_supported"});return;}
         var path=context.Request.Path.Value;
-        if(path=="/v1/health"){await Reply(200,new {schemaVersion=1,app="GameDevUsageBar",appVersion=UsageExporter.AppVersion,status="ready",readOnly=true});return;}
+        if(path=="/v1/health"){
+            if(runtime is null)await Reply(200,new {schemaVersion=1,app="GameDevUsageBar",appVersion=UsageExporter.AppVersion,status="ready",readOnly=true});
+            else await Reply(200,new {schemaVersion=1,app="GameDevUsageBar",appVersion=UsageExporter.AppVersion,status="ready",readOnly=true,runtime=runtime()});
+            return;
+        }
         if(path=="/v1/network"){if(network is null){await Reply(503,new {error="network_sampler_unavailable"});return;}await Reply(200,network());return;}
         if(path!="/v1/accounts"&&path!="/v1/usage"&&!(path?.StartsWith("/v1/usage/",StringComparison.Ordinal)??false)){await Reply(404,new {error="not_found"});return;}
         try {

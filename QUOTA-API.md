@@ -7,7 +7,7 @@ The running Windows application exposes a read-only HTTP API at **http://127.0.0
 | Request | Result |
 | --- | --- |
 | `GET /v1/network` | Existing Windows adapter speed sample, upload/download decimal MB/s and sample status; no new sampling |
-| `GET /v1/health` | App identity, app version, schema version, readiness and read-only flag |
+| `GET /v1/health` | App identity, app version, schema version, readiness and read-only flag; optional `runtime` logging status and safe failure metadata |
 | `GET /v1/usage` | All registered providers, selected account per provider, including disabled sources |
 | `GET /v1/usage/{provider_id}` | Selected account of one provider; unknown or retired IDs return 404 |
 | `GET /v1/accounts` | Every saved account across providers |

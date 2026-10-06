@@ -10,6 +10,7 @@ static class QuotaApiChecks
 {
     public static IEnumerable<(string Name,Func<Task> Run)> Cases()
     {
+        foreach(var item in RuntimeHealthCases())yield return item;
         var now=DateTimeOffset.UtcNow;
         var definition=new ProviderDefinition("claude","Claude","Subscription","fixture","#fff",new("api.anthropic.com",443,"/api/oauth/usage"));
         var config=new AccountConfig("claude",Guid.NewGuid(),"private-account-label",true,Guid.NewGuid(),Guid.NewGuid(),AccountId:"private-account-id");
@@ -33,7 +34,11 @@ static class QuotaApiChecks
             int exports=0;UsageExport Export(){exports++;return new(1,"GameDevUsageBar",UsageExporter.AppVersion,now,true,[UsageExporter.Provider(definition,State(),now)]);}
             await using var server=new QuotaApiServer(Export);await server.StartAsync(0);
             using var client=new HttpClient(new SocketsHttpHandler{UseProxy=false,AllowAutoRedirect=false}){BaseAddress=new(server.Address!),Timeout=TimeSpan.FromSeconds(5)};
-            using(var health=await client.GetAsync("/v1/health")){Check(health.StatusCode==HttpStatusCode.OK&&exports==0);}
+            using(var health=await client.GetAsync("/v1/health")){
+                Check(health.StatusCode==HttpStatusCode.OK&&exports==0);
+                using var document=JsonDocument.Parse(await health.Content.ReadAsStringAsync());var body=document.RootElement;
+                Check(body.EnumerateObject().Count()==5&&!body.TryGetProperty("runtime",out _)&&body.GetProperty("status").GetString()=="ready"&&body.GetProperty("read_only").GetBoolean());
+            }
             var payload=await client.GetStringAsync("/v1/usage");using(var document=JsonDocument.Parse(payload)){Check(document.RootElement.GetProperty("schema_version").GetInt32()==1&&document.RootElement.GetProperty("providers")[0].GetProperty("metrics")[0].GetProperty("window_seconds").GetInt32()==18000);}
             using(var single=await client.GetAsync("/v1/usage/claude")){Check(single.StatusCode==HttpStatusCode.OK);}
             using(var missing=await client.GetAsync("/v1/usage/not-real")){Check(missing.StatusCode==HttpStatusCode.NotFound);}
@@ -57,6 +62,25 @@ static class QuotaApiChecks
                 var port=((IPEndPoint)blocker.LocalEndpoint).Port;await using var server=new QuotaApiServer(()=>new(1,"GameDevUsageBar",UsageExporter.AppVersion,now,true,[]));
                 bool failed=false;try{await server.StartAsync(port);}catch(IOException){failed=true;}Check(failed&&server.Address is null);
             } finally {blocker.Stop();}
+        });
+    }
+    public static IEnumerable<(string Name,Func<Task> Run)> RuntimeHealthCases()
+    {
+        yield return ("Health exposes safe runtime logging failures without exporting quota or account secrets",async()=>{
+            const string canary="health-secret-canary-not-a-real-key-83014";
+            void Check(bool condition){if(!condition)throw new Exception("Runtime health check failed.");}
+            var fixtureRoot=Environment.GetEnvironmentVariable("GAMEDEVUSAGEBAR_QA_ROOT")??Path.Combine(Path.GetTempPath(),"WorkBuddy-Tasks","work","gamedevusagebar-health-fixtures-20261006","workspace");
+            var root=Path.Combine(fixtureRoot,"health-"+Guid.NewGuid().ToString("N")+"-"+canary);Directory.CreateDirectory(root);File.WriteAllText(Path.Combine(root,"logs"),canary);
+            using var log=new RuntimeDiagnostics(root,UsageExporter.AppVersion);Check(!log.BeginSession());
+            var summary=log.GetSummary();var failure=summary.FirstLoggingFailure;Check(!summary.LoggingAvailable&&failure is not null&&failure.Stage=="prepare_log_directory"&&failure.HResult!=0);
+            int exports=0,runtimeReads=0;UsageExport Export(){exports++;throw new InvalidOperationException(canary);}
+            await using var server=new QuotaApiServer(Export,runtime:()=>{runtimeReads++;return summary;});await server.StartAsync(0);
+            using var client=new HttpClient(new SocketsHttpHandler{UseProxy=false,AllowAutoRedirect=false}){BaseAddress=new(server.Address!),Timeout=TimeSpan.FromSeconds(5)};
+            using var response=await client.GetAsync("/v1/health");var payload=await response.Content.ReadAsStringAsync();Check(response.StatusCode==HttpStatusCode.OK&&exports==0&&runtimeReads==1&&!response.Headers.Contains("Access-Control-Allow-Origin"));
+            using var document=JsonDocument.Parse(payload);var body=document.RootElement;var runtime=body.GetProperty("runtime");var first=runtime.GetProperty("first_logging_failure");
+            Check(body.EnumerateObject().Count()==6&&body.GetProperty("schema_version").GetInt32()==1&&body.GetProperty("status").GetString()=="ready"&&body.GetProperty("read_only").GetBoolean());
+            Check(!runtime.GetProperty("logging_available").GetBoolean()&&!runtime.GetProperty("session_started").GetBoolean()&&first.GetProperty("stage").GetString()==failure!.Stage&&first.GetProperty("h_result").GetInt32()==failure.HResult&&first.GetProperty("type").GetString()==failure.Type&&first.GetProperty("timestamp_utc").GetDateTimeOffset()==failure.TimestampUtc);
+            Check(!payload.Contains(canary)&&!payload.Contains(root)&&!payload.Contains("account",StringComparison.OrdinalIgnoreCase)&&!payload.Contains("credential",StringComparison.OrdinalIgnoreCase)&&!payload.Contains("message",StringComparison.OrdinalIgnoreCase)&&!payload.Contains("path",StringComparison.OrdinalIgnoreCase));
         });
     }
 }
