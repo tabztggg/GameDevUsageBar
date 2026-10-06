@@ -19,6 +19,7 @@ public sealed class NativeClaudeRenewal : IDisposable
     private readonly Func<AccountConfig,AccountConfig,Task<AccountConfig>> bind;
     private readonly Func<bool> busy;
     private readonly TimeProvider clock;
+    private readonly Action<Exception>? onError;
     private readonly HttpClient http;
     private readonly SemaphoreSlim flight=new(1,1);
     private readonly object sync=new();
@@ -26,9 +27,9 @@ public sealed class NativeClaudeRenewal : IDisposable
     private DateTimeOffset? profileNotBefore;
     private sealed record Journal(int Schema,Guid Slot,string NativeIdentity,string BaselineHash,string RefreshHash,string Phase,byte[]? Desired,string? NewIdentity,string? AccountUuid,string? OrganizationUuid,DateTimeOffset? ProfileNotBefore=null);
     public NativeClaudeRenewal(string root,NativeOAuthStore native,Func<AccountConfig,AccountConfig,Task<AccountConfig>> binding,
-        HttpMessageHandler? fixtureHandler=null,TimeProvider? time=null,Func<bool>? busyGuard=null)
+        HttpMessageHandler? fixtureHandler=null,TimeProvider? time=null,Func<bool>? busyGuard=null,Action<Exception>? onError=null)
     {
-        this.root=Path.Combine(root,"auth-renewal");this.native=native;bind=binding;clock=time??TimeProvider.System;busy=busyGuard??(()=>NativeLoginSwitcher.HasRunningCli("claude"));
+        this.root=Path.Combine(root,"auth-renewal");this.native=native;bind=binding;clock=time??TimeProvider.System;busy=busyGuard??(()=>NativeLoginSwitcher.HasRunningCli("claude"));this.onError=onError;
         http=new(fixtureHandler??CreateSystemProxyHandler()){Timeout=Timeout.InfiniteTimeSpan};
     }
     // Leaving Proxy unset uses HttpClient.DefaultProxy: process proxy settings,
@@ -68,7 +69,7 @@ public sealed class NativeClaudeRenewal : IDisposable
             if(j is null||j.Schema!=1||j.Slot!=c.SlotId||j.Phase is not ("posting" or "response" or "complete" or "rejected"))throw new QueryException(FailureKind.AuthRenewalUnknown);
             return j;
         }
-        catch(QueryException){throw;}catch{throw new QueryException(FailureKind.AuthRenewalUnknown);}
+        catch(QueryException){throw;}catch(Exception error){ErrorObserver.Report(onError,error);throw new QueryException(FailureKind.AuthRenewalUnknown);}
         finally{if(plain is not null)CryptographicOperations.ZeroMemory(plain);}
     }
     private async Task SaveJournal(AccountConfig c,Journal j)
@@ -231,7 +232,7 @@ public sealed class NativeClaudeRenewal : IDisposable
                 journal=journal with {Phase="complete"};await SaveJournal(config,journal);throw new QueryException(FailureKind.AuthRenewalBusy);
             }
             catch(QueryException){throw;}
-            catch{throw new QueryException(FailureKind.AuthRenewalUnknown);}
+            catch(Exception error){ErrorObserver.Report(onError,error);throw new QueryException(FailureKind.AuthRenewalUnknown);}
             finally{CryptographicOperations.ZeroMemory(body);}
         }
         catch(QueryException error)
@@ -250,7 +251,7 @@ public sealed class NativeClaudeRenewal : IDisposable
                 error.Kind==FailureKind.AuthRenewalBusy||recoverable?error.RetryNotBefore??clock.GetUtcNow().AddSeconds(5):null);
             throw;
         }
-        catch{State(config,"unknown");throw new QueryException(FailureKind.AuthRenewalUnknown);}
+        catch(Exception error){ErrorObserver.Report(onError,error);State(config,"unknown");throw new QueryException(FailureKind.AuthRenewalUnknown);}
         finally{if(document is not null)CryptographicOperations.ZeroMemory(document);if(journal?.Desired is {} desired)CryptographicOperations.ZeroMemory(desired);flight.Release();}
     }
     private sealed class BeforePostException:Exception;
@@ -320,7 +321,7 @@ public sealed class NativeClaudeRenewal : IDisposable
             // grant in the next loop. Never call this expired credential ready.
             State(next,confirmedExpiry>clock.GetUtcNow()?"ready":"scheduled",confirmedExpiry>clock.GetUtcNow()?confirmedExpiry-TimeSpan.FromMinutes(5):clock.GetUtcNow());return next;
         }
-        catch(QueryException){throw;}catch{throw new QueryException(FailureKind.AuthRenewalUnknown);}
+        catch(QueryException){throw;}catch(Exception error){ErrorObserver.Report(onError,error);throw new QueryException(FailureKind.AuthRenewalUnknown);}
         finally{if(mergedBytes is not null)CryptographicOperations.ZeroMemory(mergedBytes);if(acquired is not null)await acquired.DisposeAsync();}
     }
     private bool Matches(string hash)
@@ -349,7 +350,7 @@ public sealed class NativeClaudeRenewal : IDisposable
         finally{CryptographicOperations.ZeroMemory(bytes);}
         }
         catch(QueryException error){throw new QueryException(error.Kind,error.RetryNotBefore??clock.GetUtcNow().AddSeconds(5));}
-        catch{throw new QueryException(FailureKind.AuthRenewalUnknown,clock.GetUtcNow().AddSeconds(5));}
+        catch(Exception error){ErrorObserver.Report(onError,error);throw new QueryException(FailureKind.AuthRenewalUnknown,clock.GetUtcNow().AddSeconds(5));}
     }
     private static async Task<bool> InvalidGrantAsync(HttpResponseMessage response,CancellationToken ct)
     {

@@ -132,18 +132,22 @@ internal static class Program
                 Assert(initialCalls==limited.Calls+unauthorized.Calls+demo.Calls,"presentation caused extra calls");
             });
             await Check("Widget show and state updates do not activate it",async ()=> {
-                sentinel=new Window {Title="GameDevUsageBar QA focus sentinel",Width=180,Height=100};
-                sentinel.Show();sentinel.Activate();await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);var foreground=GetForegroundWindow();
-                Assert(foreground==NativeWindows.Handle(sentinel),"focus sentinel did not establish the test baseline");
+                sentinel=new Window {Title="GameDevUsageBar QA focus sentinel",Width=180,Height=100,ShowActivated=false};
+                // Preserve the actual foreground. Windows may legitimately deny
+                // a background test's attempt to activate its own sentinel.
+                sentinel.Show();await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);var foreground=GetForegroundWindow();
+                Assert(foreground!=IntPtr.Zero&&foreground!=NativeWindows.Handle(surfaces.Widget),"non-widget foreground baseline was unavailable");
                 preferences.Update(p=>p with {Widget=p.WidgetOrDefault with {Visible=false}});
                 preferences.Update(p=>p with {Widget=p.WidgetOrDefault with {Visible=true,Topmost=false,Collapsed=false,Locked=false}});
                 await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
-                Assert(GetForegroundWindow()==foreground,"widget show stole focus");
+                var afterShow=GetForegroundWindow();Assert(afterShow==foreground,"foreground changed while showing the widget");
                 var flags=GetStyle(NativeWindows.Handle(surfaces.Widget),-20).ToInt64();
                 Assert((flags&0x08000000L)!=0 && (flags&0x80L)!=0,"no-activate/tool-window flags absent");
                 Assert(SendMessage(NativeWindows.Handle(surfaces.Widget),0x21,IntPtr.Zero,IntPtr.Zero)==new IntPtr(3),"mouse activation not rejected");
                 await host.Coordinator.RefreshAsync("demo");await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
-                Assert(GetForegroundWindow()==foreground,"state update stole focus");
+                var afterRefresh=GetForegroundWindow();
+                await File.WriteAllTextAsync(Path.Combine(root,"focus-observation.json"),JsonSerializer.Serialize(new{before=foreground.ToInt64(),afterShow=afterShow.ToInt64(),afterRefresh=afterRefresh.ToInt64(),widget=NativeWindows.Handle(surfaces.Widget).ToInt64()}));
+                Assert(afterRefresh==foreground,"foreground changed during the state update");
             });
             await Check("Legacy collapse preference cannot restore a tall widget; topmost matches native state",()=> {
                 preferences.Update(p=>p with {Widget=p.WidgetOrDefault with {Collapsed=true,Topmost=true}});

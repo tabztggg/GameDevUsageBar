@@ -186,7 +186,7 @@ public sealed partial class ApplicationHost : IAsyncDisposable
     {
         Root=root; Adapters=adapters ?? ProviderCatalog.Create(); Settings=new(root,ReportHandledError); Secrets=new(root,ReportHandledError);
         var nativeStore=native??new NativeOAuthStore(onError:ReportHandledError);
-        var renewal=native is null?new NativeClaudeRenewal(root,nativeStore,CommitRenewalBindingAsync):null;
+        var renewal=native is null?new NativeClaudeRenewal(root,nativeStore,CommitRenewalBindingAsync,onError:ReportHandledError):null;
         Queries=new(Secrets,Adapters.Select(a=>a.Definition),native:nativeStore,nativeVault:new NativeAuthVault(root,nativeStore,onError:ReportHandledError),renewal:renewal,onError:ReportHandledError);
         Coordinator=new(Queries,new DiskSnapshotStore(root,ReportHandledError));Coordinator.ErrorObserved+=ReportHandledError;
         foreach(var adapter in Adapters.OfType<ApiAdapter>())adapter.ErrorObserved+=ReportHandledError;
