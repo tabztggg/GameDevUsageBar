@@ -52,8 +52,11 @@ public sealed partial class ApplicationHost
             await saving.WaitAsync();
             try
             {
+                // The CLI auth write must not precede a known settings failure:
+                // switching also retains recognized credentials in the vault.
+                if(Settings.ReadOnly)return new(NativeAccountStatus.Failed,"Account settings are read-only. CLI auth files were not changed.");
                 var target=GetAccounts(provider).Single(account=>account.SlotId==slot);
-                result=await new NativeLoginSwitcher(Queries.Native,vault,onError:error=>RuntimeLog?.RecordException("handled_exception",error)).SwitchAsync(target,GetAccounts(provider));
+                result=await new NativeLoginSwitcher(Queries.Native,vault,busyGuard:nativeCliBusyGuard,onError:error=>RuntimeLog?.RecordException("handled_exception",error)).SwitchAsync(target,GetAccounts(provider));
             }
             finally{saving.Release();}
             if(result.Status==NativeAccountStatus.Unknown)unknownNativeWrites.Add(provider);

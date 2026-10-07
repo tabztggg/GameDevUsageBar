@@ -36,10 +36,14 @@
    <Grid Margin="0,10,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
     <TextBlock Text="{Binding CompactTime}" FontSize="10" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="0,0,8,0" ToolTip="{Binding TimeText}"/>
     <StackPanel Grid.Column="1" Orientation="Horizontal" Visibility="{Binding ShowActions, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolVisibility}}">
+     <Button x:Name="SwitchAccountButton" Content="{loc:Loc 'Switch account'}" ToolTip="{Binding AccountSwitchHint}" IsEnabled="{Binding CanSwitchAccount}" Click="SwitchAccount_Click" FontSize="12" Padding="10,5" Margin="0,0,6,0"/>
      <Button Content="{loc:Loc L0e91610117}" IsEnabled="{Binding CanRefresh}" Click="Refresh_Click" FontSize="12" Padding="10,5" Margin="0,0,6,0"/>
      <Button Content="{Binding SetupLabel}" Click="Setup_Click" FontSize="12" Padding="10,5" Margin="0"/>
     </StackPanel>
    </Grid>
+   <Border Visibility="{Binding ShowActions, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolVisibility}}">
+    <TextBlock Text="{Binding AccountSwitchFeedback}" Style="{StaticResource OptionalText}" Foreground="{DynamicResource MutedBrush}" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite"/>
+   </Border>
   </StackPanel>
  </Border>
 </UserControl>

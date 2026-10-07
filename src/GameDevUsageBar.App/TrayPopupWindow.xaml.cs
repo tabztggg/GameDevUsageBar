@@ -18,11 +18,13 @@ public partial class TrayPopupWindow : Window
     public event Action? OverviewRequested, SettingsRequested, WidgetRequested, ExitRequested, DismissRequested;
     public event Action<string>? AccountRequested;
     public event Action<string,Guid>? AccountSwitchRequested;
+    public event Action<string,Guid>? CliAccountSwitchRequested;
     public event Action<string>? ManageAccountsRequested;
     public TrayPopupWindow(ProviderStateHub hub)
     {
         this.hub=hub; InitializeComponent();
         AddHandler(AccountPickerView.SelectAccountEvent,new EventHandler<AccountSelectionEventArgs>((_,e)=>{e.Handled=true;AccountSwitchRequested?.Invoke(e.ProviderId,e.SlotId);}));
+        AddHandler(CompactCardView.SwitchCliAccountEvent,new EventHandler<AccountSelectionEventArgs>((_,e)=>{e.Handled=true;CliAccountSwitchRequested?.Invoke(e.ProviderId,e.SlotId);}));
         AddHandler(AccountPickerView.ManageAccountsEvent,new RoutedEventHandler((_,e)=>{if(e.OriginalSource is FrameworkElement {DataContext:CardModel model}){e.Handled=true;ManageAccountsRequested?.Invoke(model.Id);}}));
         view=hub.CreateView(m=>selectedId is null ? m.EligibleForWidget : m.Id==selectedId); Cards.ItemsSource=view;
         hub.Changed+=Changed; Changed();

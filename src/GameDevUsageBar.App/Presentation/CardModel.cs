@@ -81,6 +81,10 @@ public sealed class CardModel(ProviderDefinition definition, ProviderState state
     private readonly TimeProvider time = clock ?? TimeProvider.System;
     private MetricView[]? metricViews;
     private IReadOnlyList<AccountChoice>? accountChoices;
+    private IReadOnlyList<AccountChoice> cliAccountChoices=[];
+    private string accountSwitchFeedback="";
+    private string accountSwitchLabel="";
+    private bool accountSwitchBusy;
     public event PropertyChangedEventHandler? PropertyChanged;
     public ProviderState State { get; private set; } = state;
     public ProviderDefinition Definition => definition;
@@ -89,11 +93,28 @@ public sealed class CardModel(ProviderDefinition definition, ProviderState state
     public string Name => L.T(definition.Name);
     public Guid SlotId => State.Config.SlotId;
     public IReadOnlyList<AccountChoice> AccountChoices => accountChoices ?? Array.AsReadOnly(new[] { new AccountChoice(SlotId,State.Config.Label,PrimarySummary,CompactBadge,true) });
-    public void SetAccountChoices(IReadOnlyList<AccountChoice> value)
+    public bool SupportsCliAccountSwitch=>Id is "codex" or "claude";
+    public IReadOnlyList<AccountChoice> CliAccountChoices=>cliAccountChoices;
+    public bool CanSwitchAccount=>!accountSwitchBusy && definition.CanConfigure && !definition.IsDemo && (!SupportsCliAccountSwitch || cliAccountChoices.Count>0);
+    public string AccountSwitchHint=>L.T(SupportsCliAccountSwitch ? "Choose a saved CLI account. Only its auth file is replaced; existing sessions stay unchanged." : "Choose the displayed account");
+    public string AccountSwitchFeedback=>accountSwitchFeedback.Length==0?"":(accountSwitchLabel.Length>0?accountSwitchLabel+" · ":"")+L.T(accountSwitchFeedback);
+    public bool AccountSwitchBusy=>accountSwitchBusy;
+    public void SetAccountSwitchFeedback(string message,bool busy=false,string accountLabel="")
     {
-        if(accountChoices is not null && accountChoices.SequenceEqual(value))return;
+        accountSwitchFeedback=message;accountSwitchBusy=busy;accountSwitchLabel=accountLabel;
+        PropertyChanged?.Invoke(this,new(nameof(AccountSwitchFeedback)));
+        PropertyChanged?.Invoke(this,new(nameof(AccountSwitchBusy)));
+        PropertyChanged?.Invoke(this,new(nameof(CanSwitchAccount)));
+    }
+    public void SetAccountChoices(IReadOnlyList<AccountChoice> value,IReadOnlyList<AccountChoice>? savedCli=null)
+    {
+        savedCli??=[];
+        if(accountChoices is not null && accountChoices.SequenceEqual(value) && cliAccountChoices.SequenceEqual(savedCli))return;
         accountChoices=Array.AsReadOnly(value.ToArray());
+        cliAccountChoices=Array.AsReadOnly(savedCli.ToArray());
         PropertyChanged?.Invoke(this,new(nameof(AccountChoices)));
+        PropertyChanged?.Invoke(this,new(nameof(CliAccountChoices)));
+        PropertyChanged?.Invoke(this,new(nameof(CanSwitchAccount)));
     }
     public string Channel => $"{L.T(definition.Channel)}"+(Id=="tripo" ? " · "+L.T(TripoRegions.Label(State.Config.TripoRegion)) : Id=="grsai" ? " · "+L.T(TripoRegions.Label(State.Config.QueryRegion)) : "")+(ProviderSources.SupportsLocal(Id)?" · "+L.T(ProviderSources.ModeLabel(Id,State.Config.SourceMode)):"")+(Id=="gemini"&&State.Config.ProjectId.Length>0?" · "+State.Config.ProjectId:"")+$" · {State.Config.Label}";
     public string Accent => SystemParameters.HighContrast ? SystemColors.WindowTextColor.ToString() : definition.Accent;

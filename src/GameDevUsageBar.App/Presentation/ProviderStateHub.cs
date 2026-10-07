@@ -84,12 +84,15 @@ public sealed class ProviderStateHub : IDisposable
     private void RefreshAccountChoices(string id)
     {
         var active=byId[id];
-        var choices=coordinator.GetAccounts(id).Select(state=> {
+        var states=coordinator.GetAccounts(id);
+        var choices=states.Select(state=> {
             var account=accountModels.GetValueOrDefault((id,state.Config.SlotId));
             return new AccountChoice(state.Config.SlotId,state.Config.Label,account?.PrimarySummary??"",account?.CompactBadge??"",state.Config.SlotId==active.SlotId);
         }).ToArray();
-        active.SetAccountChoices(choices);
-        foreach(var account in accountModels.Where(kv=>kv.Key.ProviderId==id).Select(kv=>kv.Value))account.SetAccountChoices(choices);
+        var savedSlots=states.Where(s=>s.Config.SourceMode=="saved-oauth" && s.Config.NativeAuthRef is not null).Select(s=>s.Config.SlotId).ToHashSet();
+        var savedCli=choices.Where(c=>savedSlots.Contains(c.SlotId)).ToArray();
+        active.SetAccountChoices(choices,savedCli);
+        foreach(var account in accountModels.Where(kv=>kv.Key.ProviderId==id).Select(kv=>kv.Value))account.SetAccountChoices(choices,savedCli);
     }
     public IReadOnlyList<CardModel> GetAccountModels(string id)=>Array.AsReadOnly(coordinator.GetAccounts(id)
         .Select(state=>accountModels.GetValueOrDefault((id,state.Config.SlotId))).OfType<CardModel>().ToArray());

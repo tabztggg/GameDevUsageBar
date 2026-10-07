@@ -90,6 +90,28 @@ internal static class NativeHostChecks
             Assert((await File.ReadAllBytesAsync(native.PathFor("codex"))).SequenceEqual(auth)&&(await File.ReadAllBytesAsync(Path.Combine(folder,"settings.json"))).SequenceEqual(settings),"Restart rewrote saved accounts or native auth");
             Assert(restarted.Queries.Events.Count==0,"Restart queried actual services");
         });
+        await Check("Native Host read-only settings reject CLI switching before auth or vault changes",async()=>{
+            var folder=Folder("read-only-switch");var native=new NativeOAuthStore(Path.Combine(folder,"home"));
+            await using var host=Host(folder,native);await host.InitializeAsync();
+            var alpha=host.GetActiveAccount("codex");await Write(native,"codex",Codex("alpha"));
+            Assert((await host.CaptureCurrentLoginAsync("codex",alpha.SlotId)).Succeeded,"Alpha fixture capture failed");
+            var beta=await host.AddAccountAsync("codex","Beta");await Write(native,"codex",Codex("beta"));
+            Assert((await host.CaptureCurrentLoginAsync("codex",beta.SlotId)).Succeeded,"Beta fixture capture failed");
+            alpha=host.GetActiveAccount("codex");beta=host.GetAccounts("codex").Single(a=>a.SlotId==beta.SlotId);
+            Assert(alpha.SourceMode=="saved-oauth"&&beta.SourceMode=="saved-oauth"&&alpha.NativeAuthRef!=beta.NativeAuthRef,"Fixture did not retain two independent saved Codex slots");
+            // Keep the valid in-memory account bindings while the persisted file
+            // becomes unreadable, which is the dangerous pre-publish condition.
+            var settingsPath=Path.Combine(folder,"settings.json");await File.WriteAllTextAsync(settingsPath,"{ fixture settings cannot be read");
+            await host.Settings.LoadAsync();Assert(host.Settings.ReadOnly,"Fixture settings did not enter read-only mode");
+            var configs=host.Accounts.ToArray();var auth=await File.ReadAllBytesAsync(native.PathFor("codex"));
+            var settings=await File.ReadAllBytesAsync(settingsPath);var vault=EncryptedFiles(folder);
+            var result=await host.SwitchCliLoginAsync("codex",alpha.SlotId);
+            Assert(result.Status==NativeAccountStatus.Failed&&result.MessageKey=="Account settings are read-only. CLI auth files were not changed.","Read-only CLI switching was not rejected at the host boundary");
+            Assert((await File.ReadAllBytesAsync(native.PathFor("codex"))).SequenceEqual(auth),"Read-only switch rewrote the fixture CLI auth file");
+            Assert(EncryptedFiles(folder).OrderBy(p=>p.Key).SequenceEqual(vault.OrderBy(p=>p.Key)),"Read-only switch changed encrypted credentials, recovery or pending files");
+            Assert(host.Accounts.SequenceEqual(configs)&&(await File.ReadAllBytesAsync(settingsPath)).SequenceEqual(settings),"Read-only switch changed account configuration or the preserved settings file");
+            Assert(host.Queries.Events.Count==0,"Read-only switch caused an account/network query");
+        });
         await Check("Native Host expectedCurrent rejects a changed or deleted account without resurrecting it",async()=>{
             var folder=Folder("expected-current");var native=new NativeOAuthStore(Path.Combine(folder,"home"));
             await using var host=Host(folder,native);await host.InitializeAsync();

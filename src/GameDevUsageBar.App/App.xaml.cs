@@ -183,8 +183,10 @@ public sealed partial class ApplicationHost : IAsyncDisposable
     partial void NativeCredentialRemoved(Guid reference);
     public IReadOnlyList<AccountConfig> GetAccounts(string id)=>Accounts.Where(account=>account.ProviderId==id).OrderBy(account=>account.Order).ThenBy(account=>account.SlotId).ToArray();
     public AccountConfig GetActiveAccount(string id)=>Accounts.Single(account=>account.ProviderId==id&&account.IsActive);
-    public ApplicationHost(string root,IReadOnlyList<IProviderAdapter>? adapters = null,NativeOAuthStore? native = null)
+    private readonly Func<string,bool>? nativeCliBusyGuard;
+    public ApplicationHost(string root,IReadOnlyList<IProviderAdapter>? adapters = null,NativeOAuthStore? native = null,Func<string,bool>? nativeCliBusyGuard = null)
     {
+        this.nativeCliBusyGuard=nativeCliBusyGuard;
         Root=root; Adapters=adapters ?? ProviderCatalog.Create(); Settings=new(root,ReportHandledError); Secrets=new(root,ReportHandledError);
         var nativeStore=native??new NativeOAuthStore(onError:ReportHandledError);
         var renewal=native is null?new NativeClaudeRenewal(root,nativeStore,CommitRenewalBindingAsync,onError:ReportHandledError):null;

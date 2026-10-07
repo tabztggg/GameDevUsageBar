@@ -17,6 +17,7 @@ public sealed class SurfaceManager : IDisposable
     private DisplaySettingsWindow? displaySettings;
     private Window? networkPanel;
     private bool disposed, handingOff;
+    private bool switchingCliAccount;
     public MainWindow Overview { get; }
     public TrayPopupWindow Panel { get; }
     public WidgetWindow Widget { get; }
@@ -31,6 +32,7 @@ public sealed class SurfaceManager : IDisposable
         Panel.OverviewRequested+=ShowOverview;Panel.SettingsRequested+=ShowSettings;
         Panel.WidgetRequested+=ShowWidget;Panel.ExitRequested+=PanelExit;Panel.AccountRequested+=ShowAccount;
         Panel.AccountSwitchRequested+=SelectAccount;Panel.ManageAccountsRequested+=ShowAccounts;
+        Panel.CliAccountSwitchRequested+=SwitchCliAccount;
         overview.DisplaySettingsRequested+=ShowSettings;
         overview.ExitRequested+=OverviewExit;
         preferences.Changed+=PreferencesChanged;
@@ -78,6 +80,21 @@ public sealed class SurfaceManager : IDisposable
     public async void SelectAccount(string id,Guid slot)
     {
         try{await host.SelectAccountAsync(id,slot);}catch(Exception error){host.RuntimeLog?.RecordException("handled_exception",error);Overview.ReportLocalError();}
+    }
+    private async void SwitchCliAccount(string id,Guid slot)
+    {
+        if(disposed || switchingCliAccount)return;
+        var model=hub.Models.FirstOrDefault(m=>m.Id==id);
+        if(model is null || !model.SupportsCliAccountSwitch)return;
+        var label=model.CliAccountChoices.FirstOrDefault(account=>account.SlotId==slot)?.Label??"";
+        switchingCliAccount=true;model.SetAccountSwitchFeedback("Switching CLI login…",true,label);
+        try {
+            var result=await host.SwitchCliLoginAsync(id,slot);
+            if(!disposed)model.SetAccountSwitchFeedback(result.MessageKey,accountLabel:label);
+        } catch(Exception error) {
+            host.RuntimeLog?.RecordException("handled_exception",error);
+            if(!disposed)model.SetAccountSwitchFeedback("The account operation could not finish. No credentials were logged.",accountLabel:label);
+        } finally {switchingCliAccount=false;}
     }
     public void ShowNetwork()
     {
@@ -135,6 +152,7 @@ public sealed class SurfaceManager : IDisposable
         Widget.NetworkRequested-=ShowNetwork;Overview.NetworkRequested-=ShowNetwork;networkPanel?.Close();
         Widget.SettingsRequested-=ShowSettings;Widget.ProviderRequested-=ShowProvider;
         Panel.AccountSwitchRequested-=SelectAccount;Panel.ManageAccountsRequested-=ShowAccounts;
+        Panel.CliAccountSwitchRequested-=SwitchCliAccount;
         SystemEvents.DisplaySettingsChanged-=DisplayChanged;SystemEvents.UserPreferenceChanged-=UserPreferenceChanged;SystemEvents.PowerModeChanged-=PowerChanged;
         Panel.AllowClose=Widget.AllowClose=Overview.AllowClose=true;
         displaySettings?.Close();Panel.Close();Widget.Close();Overview.Close();

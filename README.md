@@ -71,6 +71,8 @@ Selecting a displayed account changes the bar and overview; it does not change a
 
 For Codex and Claude, sign into each account yourself and use **Save current CLI login** to capture auth data in a Windows-user encrypted vault. **Switch CLI login** is separate: close CLI sessions first; the app stores encrypted recovery data, replaces only the supported auth file/field, and verifies it. It respects `CODEX_HOME` and `CLAUDE_CONFIG_DIR`, preserves unrelated Claude fields, and leaves existing desktop sessions alone. It does not launch or sign into a CLI.
 
+The provider popup also has a **Switch account** button next to Refresh and Settings. For Codex and Claude, it restores the selected saved CLI login and selects that account for display after verification. The header dropdown changes the displayed account only. For API providers, the footer button selects the displayed API account. Switching reports BUSY, read-only and unresolved results without automatically retrying an auth write.
+
 Version 0.9.1 renews the **explicitly connected current Claude local OAuth login** before token expiry while the app runs. Native refresh locks and recoverable confirmed responses guard rotation. Saved account snapshots and manual tokens are not automatically renewed. Revoked/expired refresh grants require signing in again; uncertain rotations are not automatically replayed. This follows Claude Code's implementation and may change. [Authentication details](docs/installation.md#accounts-and-authentication)
 
 ## Local quota API

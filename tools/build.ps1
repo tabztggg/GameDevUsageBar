@@ -16,6 +16,8 @@ try {
   & $sdk run --project tests\GameDevUsageBar.Tests -c Release --no-build
   if($LASTEXITCODE -ne 0){throw 'Behavior checks failed.'}
   if($UiChecks){
+    & $sdk run --project tests\GameDevUsageBar.AppTests -c Release --no-build -- --footer-account-switch
+    if($LASTEXITCODE -ne 0){throw 'Footer account-switch integration checks failed.'}
     & $sdk run --project tests\GameDevUsageBar.AppTests -c Release --no-build -- --popup-positioning
     if($LASTEXITCODE -ne 0){throw 'Popup positioning integration checks failed.'}
     & $sdk run --project tests\GameDevUsageBar.AppTests -c Release --no-build
