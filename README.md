@@ -4,9 +4,9 @@
 
 **Your AI quotas, credits, and balances. One quiet Windows bar.**
 
-Windows 10/11 · x64 · English / 简体中文 · v0.9.1 preview
+Windows 10/11 · x64 · English / 简体中文 · v0.9.5 preview
 
-[Download](https://github.com/tabztggg/GameDevUsageBar/releases/latest) · [Installation](docs/installation.md) · [中文](README.zh-CN.md) · [Quota API](QUOTA-API.md) · [Release notes](docs/releases/v0.9.1.md)
+[Download](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.5) · [Installation](docs/installation.md) · [中文](README.zh-CN.md) · [Quota API](QUOTA-API.md) · [Release notes](docs/releases/v0.9.5.md)
 
 </div>
 
@@ -18,12 +18,12 @@ Keep Claude and Codex quota windows, Tripo and GRSAI credits, API balances, and 
 
 ## Get started
 
-Download the Windows x64 package from [Releases](https://github.com/tabztggg/GameDevUsageBar/releases/latest):
+Download the Windows x64 package from [Releases](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.5):
 
 | Package | Best for |
 | --- | --- |
-| `GameDevUsageBar-0.9.1-win-x64-setup.exe` | A fixed installation with Start menu shortcuts and optional logon startup |
-| `GameDevUsageBar-0.9.1-win-x64.zip` | Extracting and running without an installer |
+| `GameDevUsageBar-0.9.5-win-x64-setup.exe` | A fixed installation with Start menu shortcuts and optional logon startup |
+| `GameDevUsageBar-0.9.5-win-x64.zip` | Extracting and running without an installer |
 | `SHA256SUMS.txt` | Checking download integrity |
 
 The runtime is included. **No .NET, Node.js, Git, or developer tools are required to run the app.** Keep the complete portable folder together.
@@ -42,6 +42,14 @@ Open GameDevUsageBar, choose a service's **Settings**, configure its credential 
 - **English and Simplified Chinese.** Switch immediately; custom account labels remain unchanged.
 
 Percentages mean **remaining quota**, not consumed usage. Missing fields stay unknown. Live, cached, stale, demo, authentication, permission, and rate-limit states remain distinct.
+
+### Hover for details, click for actions
+
+Hover shows the quota windows, reset countdowns, and freshness. Click opens the same information with account switching, Refresh, and Settings actions.
+
+| Hover card | Clicked provider popup |
+| --- | --- |
+| ![Quota detail hover card](docs/screenshots/hover-en-US.png) | ![Provider popup with account switch action](docs/screenshots/provider-popup-en-US.png) |
 
 ## Supported services
 
@@ -91,9 +99,11 @@ Check each metric's freshness and `usable` flag. Shared balances are not separat
 
 ## Data and safety
 
-The v0.9.2 source adds bounded startup, exit, error, and resource logs under `%LOCALAPPDATA%\GameDevBar\logs`. Open **Export diagnostics…** from the overview or tray menu to preview and save a filtered ZIP locally. An interrupted session is reported on the next launch without inventing its cause. [Diagnostic logging](docs/diagnostics.md)
+Since v0.9.2, bounded startup, exit, error, and resource logs are stored under `%LOCALAPPDATA%\GameDevBar\logs`. Open **Export diagnostics…** from the overview or tray menu to preview and save a filtered ZIP locally. An interrupted session is reported on the next launch without inventing its cause. [Diagnostic logging](docs/diagnostics.md)
 
 Settings, caches, encrypted credentials, and presentation preferences live in `%LOCALAPPDATA%\GameDevBar`; the legacy name preserves compatibility. Installation/removal do not sign you out of Codex, Claude, or Gemini.
+
+Unreadable settings are preserved in read-only mode rather than overwritten with defaults. Fix or restore the original file before saving account changes; CLI switching also rejects known read-only account settings before changing auth files.
 
 Usage queries do not generate content or redeem tickets. Current Claude renewal and explicit CLI switching are the scoped auth-writing operations above. Provider requests retain TLS verification, response limits, disabled redirects, and account/source cache isolation. Display and language changes do not query providers.
 

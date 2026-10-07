@@ -2,9 +2,9 @@
 
 **把 AI 剩余额度、积分和余额，放进一条安静的 Windows 用量栏。**
 
-Windows 10/11 · x64 · v0.9.1 预览版 · 中文 / English
+Windows 10/11 · x64 · v0.9.5 预览版 · 中文 / English
 
-[English](README.md) · [下载](https://github.com/tabztggg/GameDevUsageBar/releases/latest) · [安装说明](docs/installation.zh-CN.md) · [额度接口](QUOTA-API.zh-CN.md) · [Release 说明](docs/releases/v0.9.1.md)
+[English](README.md) · [下载](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.5) · [安装说明](docs/installation.zh-CN.md) · [额度接口](QUOTA-API.zh-CN.md) · [Release 说明](docs/releases/v0.9.5.md)
 
 ![单行悬浮栏](docs/screenshots/floating-bar-zh-CN.png)
 
@@ -14,12 +14,12 @@ Windows 10/11 · x64 · v0.9.1 预览版 · 中文 / English
 
 ## 下载和启动
 
-在 [Releases](https://github.com/tabztggg/GameDevUsageBar/releases/latest) 中选择：
+在 [Releases](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.5) 中选择：
 
 | 文件 | 用途 |
 | --- | --- |
-| `GameDevUsageBar-0.9.1-win-x64-setup.exe` | 固定目录安装、开始菜单快捷方式，以及可选登录自启动 |
-| `GameDevUsageBar-0.9.1-win-x64.zip` | 解压后运行的便携版 |
+| `GameDevUsageBar-0.9.5-win-x64-setup.exe` | 固定目录安装、开始菜单快捷方式，以及可选登录自启动 |
+| `GameDevUsageBar-0.9.5-win-x64.zip` | 解压后运行的便携版 |
 | `SHA256SUMS.txt` | 核对下载文件完整性 |
 
 **运行时已包含，无须安装 .NET、Node.js、Git 或开发工具。** 便携版需保留完整目录。
@@ -38,6 +38,14 @@ Windows 10/11 · x64 · v0.9.1 预览版 · 中文 / English
 - **中英文即时切换：** 不改动自定义账号名称。
 
 百分比代表**剩余额度**。缺失信息不补成 0；实时、缓存、过旧、演示、鉴权、权限和限流状态分别显示。
+
+### 悬停看详情，点击可操作
+
+悬停显示额度周期、重置倒计时和数据时效；点击后保留这些信息，并提供切换账号、刷新和设置入口。
+
+| 悬停详情 | 点击后的服务商弹窗 |
+| --- | --- |
+| ![额度悬停详情](docs/screenshots/hover-zh-CN.png) | ![含切换账号按钮的服务商弹窗](docs/screenshots/provider-popup-zh-CN.png) |
 
 ## 支持的服务
 
@@ -85,9 +93,11 @@ Invoke-RestMethod -NoProxy -TimeoutSec 5 http://127.0.0.1:17864/v1/accounts
 
 ## 本地数据与安全
 
-v0.9.2 源码新增有容量上限的启动、退出、错误及资源日志，保存在 `%LOCALAPPDATA%\GameDevBar\logs`。从总览或托盘菜单打开**导出诊断信息…**，预览后可将过滤后的 ZIP 保存到本机。中断的会话会在下次启动时标记，不推断缺乏证据的退出原因。见[诊断日志说明](docs/diagnostics.zh-CN.md)。
+从 v0.9.2 起，有容量上限的启动、退出、错误及资源日志保存在 `%LOCALAPPDATA%\GameDevBar\logs`。从总览或托盘菜单打开**导出诊断信息…**，预览后可将过滤后的 ZIP 保存到本机。中断的会话会在下次启动时标记，不推断缺乏证据的退出原因。见[诊断日志说明](docs/diagnostics.zh-CN.md)。
 
 配置、缓存、加密凭据和显示设置位于 `%LOCALAPPDATA%\GameDevBar`，沿用旧目录名以保持兼容。安装或卸载不会退出 Codex、Claude 或 Gemini 登录。
+
+无法读取的设置保留原文件并进入只读模式，不用默认值覆盖。修复或恢复原文件后再保存账号变更；已知账号设置只读时，CLI 切换也会在修改 auth 前拒绝操作。
 
 额度查询不生成内容、不兑换重置券。当前 Claude 自动续期和明确执行的 CLI 切换，是上文限定的认证写入操作。请求保留 TLS 校验、响应限制、禁用重定向和账号/来源缓存隔离；显示及语言切换不查询服务。
 

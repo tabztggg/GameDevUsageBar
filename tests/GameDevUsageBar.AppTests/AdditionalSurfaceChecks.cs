@@ -45,10 +45,11 @@ internal static class AdditionalSurfaceChecks
                 hovered.Show();clicked.Show();hovered.UpdateLayout();clicked.UpdateLayout();
                 foreach(var metric in model.Metrics)foreach(var value in new[]{metric.Label,metric.Display,metric.ResetDisplay,metric.CountdownDisplay}.Where(s=>s.Length>0))Check(Text(hover).Contains(value)&&Text(click).Contains(value),"Codex hover/click metric parity failed");
                 Check(model.Metrics.First().CountdownDisplay.Contains("5"),"Codex weekly countdown absent");
-                Check(model.Metrics.Skip(1).All(m=>m.Display==Localizer.F("{0} {1}",1,Localizer.T("tickets"))),"reset coupon uses credits instead of ticket counts");
+                var singleTicket=language=="en-US"?"1 ticket":"1 张";
+                Check(model.Metrics.Skip(1).All(m=>m.Display==singleTicket),"reset coupon uses credits instead of ticket counts");
                 Check(model.Metrics.Last().ResetDisplay.Contains(now.AddDays(25).Year.ToString()),"ticket expiry omits year");
                 Check(model.Metrics.Count()==2&&snapshot.Metrics.Length==3,"presentation merge changed API inventory or kept a duplicate row");
-                Check(Text(hover).Count(t=>t==Localizer.F("{0} {1}",1,Localizer.T("tickets")))==1&&Text(click).Count(t=>t==Localizer.F("{0} {1}",1,Localizer.T("tickets")))==1,"one ticket is displayed twice");
+                Check(Text(hover).Count(t=>t==singleTicket)==1&&Text(click).Count(t=>t==singleTicket)==1,"one ticket is displayed twice");
                 Check(!Text(hover).Contains(Localizer.T("Reset tickets expiring")),"separate ticket expiry row remains visible");
                 Render(hovered,Path.Combine(root,"codex-hover-"+language+"-150.png"));Render(clicked,Path.Combine(root,"codex-click-"+language+"-150.png"));
                 var several=snapshot with {Metrics=[snapshot.Metrics[0],snapshot.Metrics[1] with {Value=3},snapshot.Metrics[2] with {Value=1},snapshot.Metrics[2] with {Id="reset-ticket-expiry-4",Value=2,ResetAt=now.AddDays(30)}]};

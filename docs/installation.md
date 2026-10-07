@@ -2,23 +2,23 @@
 
 [Home](../README.md) · [中文](installation.zh-CN.md)
 
-GameDevUsageBar v0.9.1 packages target **Windows 10/11 x64**. They include the .NET runtime; no separate .NET, Node.js, Git, npm, or SDK installation is needed. There is no native macOS, Linux, or ARM64 package.
+GameDevUsageBar v0.9.5 packages target **Windows 10/11 x64**. They include the .NET runtime; no separate .NET, Node.js, Git, npm, or SDK installation is needed. There is no native macOS, Linux, or ARM64 package.
 
 ## Choose a package
 
-Download from the [GitHub release](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.1). Private-repository downloads require a GitHub account with repository access.
+Download from the [public GitHub release](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.5). Public release assets can be downloaded without signing into GitHub. [GitHub's public-asset access rules](https://docs.github.com/en/rest/releases/assets#get-a-release-asset)
 
 | File | Purpose |
 | --- | --- |
-| `GameDevUsageBar-0.9.1-win-x64-setup.exe` | Current-user installation with English/Chinese setup UI |
-| `GameDevUsageBar-0.9.1-win-x64.zip` | Portable folder; extract and open `GameDevUsageBar.exe` |
+| `GameDevUsageBar-0.9.5-win-x64-setup.exe` | Current-user installation with English/Chinese setup UI |
+| `GameDevUsageBar-0.9.5-win-x64.zip` | Portable folder; extract and open `GameDevUsageBar.exe` |
 | `SHA256SUMS.txt` | Release-asset SHA256 hashes |
 
 The downloads are unsigned. Verify their source and hashes; do not turn off security software. If a scanner blocks a file, retain its detection details for investigation. A matching hash verifies integrity, not antivirus clearance.
 
 ```powershell
-Get-FileHash -Algorithm SHA256 .\GameDevUsageBar-0.9.1-win-x64-setup.exe
-Get-FileHash -Algorithm SHA256 .\GameDevUsageBar-0.9.1-win-x64.zip
+Get-FileHash -Algorithm SHA256 .\GameDevUsageBar-0.9.5-win-x64-setup.exe
+Get-FileHash -Algorithm SHA256 .\GameDevUsageBar-0.9.5-win-x64.zip
 ```
 
 Compare the hashes with the matching filenames in the release's `SHA256SUMS.txt`.
@@ -53,7 +53,9 @@ For multiple Codex/Claude logins:
 2. Open **Manage accounts**, create/name a slot, and choose **Save current CLI login**.
 3. Repeat for the other accounts.
 4. Select the displayed account with the title arrow or tray account menu.
-5. To change the actual CLI auth file, close CLI sessions and explicitly choose **Switch CLI login**.
+5. To change the actual CLI auth file, close CLI sessions and explicitly choose **Switch CLI login** in Manage accounts, or **Switch account** in the clicked provider popup.
+
+For Codex and Claude, the popup footer uses the chosen saved CLI login, verifies the auth-file replacement, and then selects it for display. The title dropdown remains display-only. For API services, the footer changes only the displayed API account; it does not switch native CLI auth. BUSY, read-only, and unresolved results are shown without automatically retrying an auth write. Known read-only account settings are rejected before native auth is changed.
 
 Captured auth documents are protected with Windows current-user DPAPI. Switching creates encrypted recovery data and replaces only Codex `auth.json` or the Claude `claudeAiOauth` credential field. `CODEX_HOME` and `CLAUDE_CONFIG_DIR` are respected. Other Claude fields and existing desktop sessions remain intact. Deleting an app account does not delete or log out the native CLI.
 

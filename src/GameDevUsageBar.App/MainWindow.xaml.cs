@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     public MainWindow(ApplicationHost host,ProviderStateHub hub,PresentationPreferencesService preferences)
     {
         this.host=host; this.hub=hub; this.preferences=preferences; InitializeComponent();
+        OverviewVersion.Text="v"+App.BuildVersion.Split('+')[0];
         AddHandler(AccountPickerView.SelectAccountEvent,new EventHandler<AccountSelectionEventArgs>(Account_Selected));
         AddHandler(AccountPickerView.ManageAccountsEvent,new RoutedEventHandler(Account_Manage));
         LanguageSelector.ItemsSource=LanguageChoice.All;

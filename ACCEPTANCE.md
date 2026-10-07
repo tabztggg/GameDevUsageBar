@@ -1,6 +1,6 @@
 # Release verification
 
-## Windows x64 preview 0.9.1
+## Windows x64 preview 0.9.5
 
 This is a Windows desktop preview. Checks distinguish source/build results,
 synthetic WPF rendering, installer execution, and real provider integration.
@@ -17,6 +17,18 @@ presentation persistence, compact panels, multiple accounts and native login
 capture/switch safeguards. Additional fixture renders cover overview layouts,
 small floating-bar icons, expanded details, dark menus and background opacity.
 Screenshot values and account labels are synthetic.
+
+Local release verification passed 176 behavior checks, 22 WPF/Win32 checks,
+10 footer account-switch checks, 8 visible popup-position checks, the
+multiple-account UI suite and 7 native-account host checks. The runtime suite
+passed 8 exit/failure scenarios and the diagnostic-export checks. Overview,
+compact, strip and transparency suites passed in English and Chinese.
+
+The isolated English/Chinese installer lifecycle passed 62 checks, including
+payload integrity, shortcut/startup choices, upgrade, running-app refusal,
+uninstall and retention of synthetic user data. Production user data was not
+used or modified. The GitHub Windows workflow repeats build, account, layout
+and installer checks; its status is reported separately from local results.
 
 `tools/Test-WindowsInstaller.ps1` refuses production package identities. Its
 dedicated smoke installer verifies real per-user installation, executable
@@ -41,5 +53,5 @@ not launch the normal application against a user's live profile.
 - This release has no native macOS/Linux/ARM64 installer, automatic updater,
   code-signing certificate or independent antivirus certification.
 
-Use [the release notes](docs/releases/v0.9.1.md) for the final verification
+Use [the release notes](docs/releases/v0.9.5.md) for the final verification
 counts and [installation instructions](docs/installation.md) for setup.

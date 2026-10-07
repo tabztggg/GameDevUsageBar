@@ -19,7 +19,8 @@ public sealed class MetricView(Metric metric, TimeProvider time,string providerI
     public MetricKind Kind=>metric.Kind;
     public string Unit=>metric.Unit;
     public string Label => L.T(metric.Label)+(metric.Scope.Length>0?" · "+L.T(metric.Scope):"");
-    public string Display => metric.Kind==MetricKind.Unlimited ? L.T("No key limit") : L.T(CardPresentation.Value(metric.Value, L.T(metric.Unit))).Replace(" %", "%");
+    private static string DisplayUnit(string unit,decimal? value)=>unit=="tickets" && value==1 && L.Language=="en-US" ? "ticket" : L.T(unit);
+    public string Display => metric.Kind==MetricKind.Unlimited ? L.T("No key limit") : L.T(CardPresentation.Value(metric.Value, DisplayUnit(metric.Unit,metric.Value))).Replace(" %", "%");
     public string OverviewDisplay
     {
         get
@@ -30,14 +31,14 @@ public sealed class MetricView(Metric metric, TimeProvider time,string providerI
             var format=tiny?"#,##0.############################":metric.Unit is "USD" or "CNY"?"#,##0.00":"#,##0.##";
             var amount=value.ToString(format,L.Culture);
             if(metric.Unit is "USD" or "CNY")return (value<0?"-":"")+(metric.Unit=="USD"?"$":"¥")+Math.Abs(value).ToString(format,L.Culture);
-            return amount+(metric.Unit=="%"?"%":" "+L.T(metric.Unit));
+            return amount+(metric.Unit=="%"?"%":" "+DisplayUnit(metric.Unit,value));
         }
     }
     private static string Expiry(Metric entry)=>entry.ResetAt is {} date
         ? L.F("Expires {0}",date.ToLocalTime().ToString(L.Language=="zh-CN"?"yyyy年M月d日 HH:mm":"MMM d, yyyy HH:mm",L.Culture)) : L.T("Expiry not reported");
     private string TicketExpiryDisplay=>ticketExpiries!.Count==0 ? L.T("Expiry not reported")
         : string.Join(Environment.NewLine,ticketExpiries.Select(entry=>Expiry(entry)
-            +(ticketExpiries.Count==1&&entry.Value==metric.Value ? "" : " · "+CardPresentation.Value(entry.Value,L.T("tickets")))));
+            +(ticketExpiries.Count==1&&entry.Value==metric.Value ? "" : " · "+CardPresentation.Value(entry.Value,DisplayUnit("tickets",entry.Value)))));
     public string ResetDisplay => ticketExpiries is not null ? TicketExpiryDisplay : metric.DateMeaning=="expiry" && metric.ResetAt is null ? L.T("Expiry not reported") : metric.ResetAt is { } reset
         ? metric.DateMeaning=="expiry" ? L.F("Expires {0}",reset.ToLocalTime().ToString(L.Language=="zh-CN"?"yyyy年M月d日 HH:mm":"MMM d, yyyy HH:mm",L.Culture)) : reset <= time.GetUtcNow() && !ClaudeWindow && !CodexWindow ? L.T("Reset time passed; awaiting refresh") : L.F("Resets {0}",L.Date(reset)) : (ClaudeWindow || CodexWindow) ? L.T("Reset time not reported") : "";
     public string CountdownDisplay

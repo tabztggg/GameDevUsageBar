@@ -2,23 +2,23 @@
 
 [主页](../README.zh-CN.md) · [English](installation.md)
 
-v0.9.1 安装包面向 **Windows 10/11 x64**，包含 .NET 运行时，无须额外安装 .NET、Node.js、Git、npm 或 SDK。本版没有 macOS、Linux 或原生 ARM64 安装包。
+v0.9.5 安装包面向 **Windows 10/11 x64**，包含 .NET 运行时，无须额外安装 .NET、Node.js、Git、npm 或 SDK。本版没有 macOS、Linux 或原生 ARM64 安装包。
 
 ## 选择下载
 
-在 [GitHub Release](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.1) 下载。私有仓库下载需要有仓库访问权限的 GitHub 账号。
+在[公开 GitHub Release](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.5) 下载。公开发布文件无须登录 GitHub 即可下载，见 [GitHub 公开文件访问规则](https://docs.github.com/en/rest/releases/assets#get-a-release-asset)。
 
 | 文件 | 用途 |
 | --- | --- |
-| `GameDevUsageBar-0.9.1-win-x64-setup.exe` | 当前用户安装，安装界面支持中英文 |
-| `GameDevUsageBar-0.9.1-win-x64.zip` | 解压后运行 `GameDevUsageBar.exe` |
+| `GameDevUsageBar-0.9.5-win-x64-setup.exe` | 当前用户安装，安装界面支持中英文 |
+| `GameDevUsageBar-0.9.5-win-x64.zip` | 解压后运行 `GameDevUsageBar.exe` |
 | `SHA256SUMS.txt` | 发布文件的 SHA256 |
 
 文件未签名。核对来源和 SHA256；不要关闭安全软件。若被拦截，请保留具体检测记录以便调查。哈希一致只证明完整性，不是杀毒认证。
 
 ```powershell
-Get-FileHash -Algorithm SHA256 .\GameDevUsageBar-0.9.1-win-x64-setup.exe
-Get-FileHash -Algorithm SHA256 .\GameDevUsageBar-0.9.1-win-x64.zip
+Get-FileHash -Algorithm SHA256 .\GameDevUsageBar-0.9.5-win-x64-setup.exe
+Get-FileHash -Algorithm SHA256 .\GameDevUsageBar-0.9.5-win-x64.zip
 ```
 
 与 Release 中 `SHA256SUMS.txt` 的对应文件比较。
@@ -49,7 +49,9 @@ Codex/Claude 多账号操作：
 2. 在**管理账号**中新建并命名槽位，选择**保存当前 CLI 登录**。
 3. 对其他账号重复。
 4. 用服务标题箭头或托盘账号菜单选择显示账号。
-5. 若要修改真实 CLI 登录，先关闭 CLI 会话，再明确选择**切换 CLI 登录**。
+5. 若要修改真实 CLI 登录，先关闭 CLI 会话，再在管理账号中选择**切换 CLI 登录**，或在点击后的服务商弹窗中选择**切换账号**。
+
+Codex/Claude 弹窗底部按钮使用所选的已保存 CLI 登录，核验 auth 替换后同步选择显示账号；标题下拉仍只切换展示。API 服务商底部按钮仅切换显示的 API 账号，不修改原生 CLI auth。忙碌、只读或结果未确定时明确提示，不自动重试认证写入；已知账号设置只读时，在修改 auth 前拒绝操作。
 
 登录副本使用 Windows 当前用户 DPAPI 加密。切换前保存加密恢复数据，仅替换 Codex `auth.json` 或 Claude 的 `claudeAiOauth` 字段；遵循 `CODEX_HOME` 和 `CLAUDE_CONFIG_DIR`，保留其他 Claude 字段，不改变已运行的桌面会话。删除应用账号不会删除或退出 CLI 登录。
 
