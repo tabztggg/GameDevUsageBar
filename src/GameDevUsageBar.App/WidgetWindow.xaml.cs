@@ -29,7 +29,7 @@ public partial class WidgetWindow : Window
     private string? pendingHoverId,hoverId;
     private FrameworkElement? pendingHoverTarget;
     public ProviderAccountsView HoverAccounts {get;}=new() {ShowActions=false};
-    public Popup ProviderHoverPopup {get;}=new() {Placement=PlacementMode.Bottom,AllowsTransparency=true,StaysOpen=true,PopupAnimation=PopupAnimation.None,VerticalOffset=5};
+    public Popup ProviderHoverPopup {get;}=new() {Placement=PlacementMode.Custom,AllowsTransparency=true,StaysOpen=true,PopupAnimation=PopupAnimation.None};
     private HwndSource? source;
     private NativeWindows.Point startPointer;
     private double startLeft,startTop;
@@ -45,6 +45,8 @@ public partial class WidgetWindow : Window
         hoverSurface=new Border {Child=hoverScroll,Padding=new Thickness(12),BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(8)};
         hoverSurface.SetResourceReference(Border.BackgroundProperty,"PanelBrush");hoverSurface.SetResourceReference(Border.BorderBrushProperty,"EdgeBrush");
         ProviderHoverPopup.Child=hoverSurface;
+        ProviderHoverPopup.CustomPopupPlacementCallback=PlaceProviderHover;
+        ProviderHoverPopup.Opened+=(_,_)=>RefitProviderHover();
         hoverSurface.MouseEnter+=(_,_)=>hoverDismiss.Stop();
         hoverSurface.MouseLeave+=(_,_)=>ScheduleHoverDismiss();
         hoverSurface.MouseLeftButtonUp+=Hover_Click;
@@ -117,6 +119,7 @@ public partial class WidgetWindow : Window
             var width=Math.Min(maxWidth,Math.Max(110,desired));
             Width=width;Height=Math.Min(BarHeight,target.Work.Height/scale);
             if(source is not null){var box=Placement.ResolveBar(p.Placement,monitors,scale,width,BarHeight);NativeWindows.Move(this,box.LeftPx,box.TopPx);NativeWindows.SetTopmost(this,p.Topmost);}
+            RefitProviderHover();
         } finally {reflow=applying=false;}
     }
     private FrameworkElement ProviderCell(CardModel model)
@@ -149,12 +152,56 @@ public partial class WidgetWindow : Window
         hoverDelay.Stop();hoverDismiss.Stop();hoverId=providerId;
         HoverAccounts.SetProvider(hub,providerId);
         if(providerChanged)hoverScroll.ScrollToTop();
-        var point=target.PointToScreen(new Point(target.ActualWidth/2,target.ActualHeight));
-        var monitor=NativeWindows.Monitors().FirstOrDefault(m=>point.X>=m.Bounds.Left&&point.X<m.Bounds.Right&&point.Y>=m.Bounds.Top&&point.Y<m.Bounds.Bottom)??NativeWindows.Monitors().First();
-        var scale=source is null?1:NativeWindows.Scale(this);
-        hoverSurface.Width=Math.Max(1,Math.Min(500,monitor.Work.Width/scale-16));
-        hoverScroll.MaxHeight=Math.Max(1,Math.Min(680,monitor.Work.Height/scale-16)-30);
-        ProviderHoverPopup.PlacementTarget=target;ProviderHoverPopup.IsOpen=true;
+        ProviderHoverPopup.PlacementTarget=target;
+        FitProviderHover(target);
+        ProviderHoverPopup.IsOpen=true;
+        RefitProviderHover();
+    }
+    private static MonitorInfo ProviderHoverMonitor(FrameworkElement target)
+    {
+        // Use a point inside the anchor. Its bottom edge can fall in a taskbar or
+        // exactly outside the monitor when the bar sits at the work-area edge.
+        var point=target.PointToScreen(new Point(target.ActualWidth/2,target.ActualHeight/2));
+        var monitors=NativeWindows.Monitors();
+        return monitors.FirstOrDefault(m=>point.X>=m.Bounds.Left&&point.X<m.Bounds.Right&&point.Y>=m.Bounds.Top&&point.Y<m.Bounds.Bottom)
+            ??monitors.OrderBy(m=>Math.Pow(Math.Clamp(point.X,m.Bounds.Left,m.Bounds.Right)-point.X,2)
+                +Math.Pow(Math.Clamp(point.Y,m.Bounds.Top,m.Bounds.Bottom)-point.Y,2)).First();
+    }
+    private void FitProviderHover(FrameworkElement target)
+    {
+        var monitor=ProviderHoverMonitor(target);
+        // Overflow-menu anchors can live in a different HWND/DPI context from
+        // the widget, so use the actual anchor's visual scale for both axes.
+        var dpi=System.Windows.Media.VisualTreeHelper.GetDpi(target);
+        hoverSurface.Width=Math.Max(1,Math.Min(500,monitor.Work.Width/dpi.DpiScaleX-16));
+        var chrome=hoverSurface.Padding.Top+hoverSurface.Padding.Bottom+hoverSurface.BorderThickness.Top+hoverSurface.BorderThickness.Bottom;
+        hoverScroll.MaxHeight=Math.Max(1,Math.Min(680,monitor.Work.Height/dpi.DpiScaleY-16)-chrome);
+    }
+    public static CustomPopupPlacement ConstrainProviderHoverPlacement(Size popupSize,Size targetSize,Point targetScreenOrigin,DpiScale dpi,PixelRect work)
+    {
+        var anchorX=targetScreenOrigin.X+targetSize.Width*dpi.DpiScaleX/2;
+        var anchorY=targetScreenOrigin.Y+targetSize.Height*dpi.DpiScaleY;
+        var box=Placement.Anchor(anchorX,anchorY,popupSize.Width*dpi.DpiScaleX,popupSize.Height*dpi.DpiScaleY,work);
+        return new CustomPopupPlacement(new Point((box.Left-targetScreenOrigin.X)/dpi.DpiScaleX,(box.Top-targetScreenOrigin.Y)/dpi.DpiScaleY),PopupPrimaryAxis.None);
+    }
+    private CustomPopupPlacement[] PlaceProviderHover(Size popupSize,Size targetSize,Point offset)
+    {
+        if(ProviderHoverPopup.PlacementTarget is not FrameworkElement target)return [];
+        var dpi=System.Windows.Media.VisualTreeHelper.GetDpi(target);
+        return [ConstrainProviderHoverPlacement(popupSize,targetSize,target.PointToScreen(new Point()),dpi,ProviderHoverMonitor(target).Work)];
+    }
+    private void RefitProviderHover()
+    {
+        if(!ProviderHoverPopup.IsOpen || ProviderHoverPopup.PlacementTarget is not FrameworkElement target)return;
+        FitProviderHover(target);
+        // WPF does not reposition an open Popup when only its owner window
+        // moves. A placement-property invalidation reruns our work-area clamp
+        // without closing the account list or losing its scroll position. The
+        // custom callback deliberately ignores this offset, so no intermediate
+        // position is painted.
+        var offset=ProviderHoverPopup.HorizontalOffset;
+        ProviderHoverPopup.HorizontalOffset=offset+1;
+        ProviderHoverPopup.HorizontalOffset=offset;
     }
     public void HideProviderHover(){hoverDelay.Stop();hoverDismiss.Stop();pendingHoverId=hoverId=null;pendingHoverTarget=null;ProviderHoverPopup.IsOpen=false;}
     private void Hover_Click(object sender,MouseButtonEventArgs e)

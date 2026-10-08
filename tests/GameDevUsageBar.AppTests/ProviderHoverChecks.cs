@@ -190,10 +190,7 @@ internal static class ProviderHoverChecks
                         Assert(widget.ProviderHoverPopup.IsOpen&&widget.HoverAccounts.ProviderId==id,"Floating-bar hover is not the requested provider");
                         Assert(widget.HoverAccounts.AccountModels.Select(m=>m.SlotId).SequenceEqual(hub.GetAccountModels(id).Select(m=>m.SlotId)),"Actual hover host omits saved sibling accounts");
                         Assert(!Visuals<Button>(widget.HoverAccounts).Any(button=>button.IsVisible),"Actual hover host exposes login/query actions");
-                        var source=System.Windows.PresentationSource.FromVisual(widget.HoverAccounts) as System.Windows.Interop.HwndSource;
-                        Assert(source is not null&&GetWindowRect(source.Handle,out var bounds),"Floating-bar hover native bounds unavailable");
-                        GetWindowRect(source!.Handle,out var finalBounds);
-                        Assert(NativeWindows.Monitors().Any(m=>finalBounds.Left>=m.Work.Left-1&&finalBounds.Top>=m.Work.Top-1&&finalBounds.Right<=m.Work.Right+1&&finalBounds.Bottom<=m.Work.Bottom+1),"Actual floating-bar hover is outside a monitor work area");
+                        AssertHoverFrame(widget,id,Path.Combine(root,$"actual-bar-hover-{id}-geometry.json"));
                         Assert(GetForegroundWindow()==foreground,"Hover stole foreground activation");
                         // Presentation/language updates should retain the open
                         // pointer surface instead of destroying its owner cell.
@@ -231,6 +228,55 @@ internal static class ProviderHoverChecks
                 Assert(accountFiles.SequenceEqual(before.Where(p=>!Path.GetFileName(p.Key).StartsWith("presentation.json",StringComparison.Ordinal)).OrderBy(p=>p.Key)),"Actual hover rewrote account data");
                 Assert(adapters.Sum(a=>a.Calls.Values.Sum())==calls&&host.Queries.Events.Count==0,"Actual hover requested provider usage");
                 foreach(var id in selected.Keys)Assert(host.GetActiveAccount(id).SlotId==selected[id],"Actual hover changed account selection");
+            });
+            await Check("Actual native hover fits every monitor work area at all four widget corners",async()=>{
+                var original=preferences.Current.WidgetOrDefault;
+                var widget=new WidgetWindow(hub,preferences){ShowActivated=false};
+                try
+                {
+                    widget.Show();await Idle();
+                    var foreground=GetForegroundWindow();
+                    foreach(var monitor in NativeWindows.Monitors())
+                    foreach(var corner in new[]{"top-left","top-right","bottom-left","bottom-right"})
+                    {
+                        var x=corner.EndsWith("right",StringComparison.Ordinal)?monitor.Work.Right-1:monitor.Work.Left+1;
+                        var y=corner.StartsWith("bottom",StringComparison.Ordinal)?monitor.Work.Bottom-1:monitor.Work.Top+1;
+                        preferences.Update(p=>p with {Widget=p.WidgetOrDefault with {Placement=new(monitor.Device,monitor.Bounds,x,y),CardIds=["codex","claude","tripo"],ShowNetwork=false}});
+                        await Idle();widget.Reposition();await Idle();widget.UpdateLayout();
+                        var owner=Visuals<Button>(widget).Single(button=>button.DataContext is CardModel model&&model.Id=="tripo");
+                        widget.ShowProviderHover("tripo",owner);await Idle();
+                        var caseName=Array.IndexOf(NativeWindows.Monitors().ToArray(),monitor)+"-"+corner;
+                        AssertHoverFrame(widget,"tripo / "+monitor.Device+" / "+corner,Path.Combine(root,"hover-corner-"+caseName+".json"));
+                        Assert(widget.HoverAccounts.AccountModels.Select(m=>m.SlotId).SequenceEqual(hub.GetAccountModels("tripo").Select(m=>m.SlotId)),"Corner placement dropped provider accounts");
+                        AssertNoHorizontalClipping(widget.HoverAccounts);
+                        Assert(GetForegroundWindow()==foreground,"Corner placement stole foreground activation");
+                        var scroll=Visuals<ScrollViewer>(widget.ProviderHoverPopup.Child).Single();
+                        Assert(scroll.ScrollableHeight>0,"Corner fixture lost its scrollable account inventory");
+                        scroll.ScrollToBottom();await Idle();
+                        var last=Visuals<CompactAccountView>(widget.HoverAccounts).Last();
+                        var viewport=last.TransformToAncestor((FrameworkElement)widget.ProviderHoverPopup.Child).TransformBounds(new Rect(last.RenderSize));
+                        Assert(viewport.Bottom<=((FrameworkElement)widget.ProviderHoverPopup.Child).ActualHeight+1,"Corner popup cannot reach its final saved account");
+                        widget.HideProviderHover();await Idle();
+                    }
+                }
+                finally{widget.AllowClose=true;widget.Close();preferences.Update(p=>p with {Widget=original});await Idle();}
+                Pure(host,adapters,before,calls,selected,states);
+            });
+            await Check("Provider placement callback respects small work areas, negative origins and 125 or 150 percent DPI",()=>{
+                foreach(var scale in new[]{1d,1.25,1.5})
+                foreach(var work in new[]{new PixelRect(0,0,1024,728),new PixelRect(-1280,24,1280,696),new PixelRect(50,-400,640,360)})
+                {
+                    var size=new Size(Math.Min(500,(work.Width-16)/scale),Math.Min(620,(work.Height-16)/scale));
+                    var target=new Size(26,26);
+                    foreach(var origin in new[]{new Point(work.Left+1,work.Top+1),new Point(work.Right-26*scale-1,work.Top+1),new Point(work.Left+1,work.Bottom-26*scale-1),new Point(work.Right-26*scale-1,work.Bottom-26*scale-1)})
+                    {
+                        var placed=WidgetWindow.ConstrainProviderHoverPlacement(size,target,origin,new DpiScale(scale,scale),work);
+                        var frame=new PixelRect(origin.X+placed.Point.X*scale,origin.Y+placed.Point.Y*scale,size.Width*scale,size.Height*scale);
+                        Assert(frame.IsValid&&frame.Left>=work.Left-1&&frame.Top>=work.Top-1&&frame.Right<=work.Right+1&&frame.Bottom<=work.Bottom+1,
+                            "Small-work-area callback placed physical popup outside work area: "+JsonSerializer.Serialize(new{scale,origin,size,frame,work}));
+                    }
+                }
+                return Task.CompletedTask;
             });
             await Check("Changing clicked provider starts at its first account while updates retain scroll position",async()=>{
                 var panel=new TrayPopupWindow(hub){ShowActivated=false,ShowInTaskbar=false};
@@ -338,6 +384,30 @@ internal static class ProviderHoverChecks
         var scroll=new ScrollViewer{Content=view,MaxHeight=Math.Max(1,maxHeight-30),VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
         var border=new Border{Child=scroll,Padding=new Thickness(12),BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(8)};border.SetResourceReference(Border.BackgroundProperty,"PanelBrush");border.SetResourceReference(Border.BorderBrushProperty,"EdgeBrush");
         return new Window{Content=border,Width=width,MaxHeight=maxHeight,SizeToContent=SizeToContent.Height,WindowStyle=WindowStyle.None,ResizeMode=ResizeMode.NoResize,ShowActivated=false,ShowInTaskbar=false};
+    }
+    private static void AssertHoverFrame(WidgetWindow widget,string provider,string receiptPath)
+    {
+        var source=PresentationSource.FromVisual(widget.HoverAccounts) as System.Windows.Interop.HwndSource;
+        Assert(source is not null&&source.Handle!=NativeWindows.Handle(widget),"Hover has no distinct native popup HWND: "+provider);
+        Assert(GetWindowRect(source!.Handle,out var native),"Floating-bar hover native bounds unavailable: "+provider);
+        var frame=new PixelRect(native.Left,native.Top,native.Right-native.Left,native.Bottom-native.Top);
+        var child=(FrameworkElement)widget.ProviderHoverPopup.Child;
+        var dpi=VisualTreeHelper.GetDpi(child);var transform=source.CompositionTarget?.TransformToDevice??Matrix.Identity;
+        var monitors=NativeWindows.Monitors();
+        var facts=new{provider,native_popup_rect=frame,widget_rect=NativeWindows.Bounds(widget),
+            popup_native_dpi=NativeWindows.GetDpiForWindow(source.Handle),widget_native_dpi=NativeWindows.GetDpiForWindow(NativeWindows.Handle(widget)),
+            child_width_dip=child.ActualWidth,child_height_dip=child.ActualHeight,
+            visual_dpi_x=dpi.DpiScaleX,visual_dpi_y=dpi.DpiScaleY,transform_to_device_x=transform.M11,transform_to_device_y=transform.M22,
+            placement=widget.ProviderHoverPopup.Placement.ToString(),
+            monitors=monitors.Select(m=>new{m.Device,m.Bounds,m.Work,m.Primary}).ToArray()};
+        var diagnostic=JsonSerializer.Serialize(facts,new JsonSerializerOptions{WriteIndented=true});
+        File.WriteAllText(receiptPath,diagnostic);
+        // GetWindowRect and WinForms WorkingArea are physical pixels in this
+        // PMv2 fixture. Compare those directly, without mixing WPF DIP sizes.
+        Assert(frame.IsValid&&monitors.Any(m=>frame.Left>=m.Work.Left-1&&frame.Top>=m.Work.Top-1&&frame.Right<=m.Work.Right+1&&frame.Bottom<=m.Work.Bottom+1),
+            "Actual floating-bar hover is outside a monitor work area: "+diagnostic);
+        Assert(child.ActualWidth*dpi.DpiScaleX<=frame.Width+2&&child.ActualHeight*dpi.DpiScaleY<=frame.Height+2,
+            "Native popup clips its measured content instead of constraining the scrolling viewport: "+diagnostic);
     }
     private static async Task Configure(ApplicationHost host,FixtureAdapter adapter,AccountConfig config,string label,DateTimeOffset now,int index)
     {
