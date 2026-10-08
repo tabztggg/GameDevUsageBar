@@ -20,10 +20,21 @@ static class ProtectedClaudeLoginChecks
             "if([IO.File]::Exists($ResultPath)){exit 12}\n"+
             (data is null?"exit 3\n":"[IO.File]::WriteAllBytes($ResultPath,[Convert]::FromBase64String('"+data+"'))\nexit 0\n");
         await File.WriteAllTextAsync(script,source,new UTF8Encoding(false));
-        return await new ProtectedClaudeLoginLauncher(folder,script).LoginAsync(config);
+        var bridge=Path.Combine(folder,"synthetic bridge marker.py");
+        await File.WriteAllTextAsync(bridge,"# Synthetic dependency marker; never executed.\n",new UTF8Encoding(false));
+        return await new ProtectedClaudeLoginLauncher(folder,script,bridge).LoginAsync(config);
     }
     public static IEnumerable<(string Name,Func<Task> Run)> Cases(string root)
     {
+        yield return ("Protected Claude launcher blocks a missing Bridge before creating receipts or starting a script",async()=>{
+            var folder=Path.Combine(root,"protected-launcher","missing-bridge");Directory.CreateDirectory(folder);
+            var script=Path.Combine(folder,"must not run.ps1");var sentinel=Path.Combine(folder,"unexpected-script-start.txt");
+            var path=Convert.ToBase64String(Encoding.UTF8.GetBytes(sentinel));
+            await File.WriteAllTextAsync(script,"$path=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+path+"'))\n[IO.File]::WriteAllText($path,'unexpected fixture launch')\nexit 0\n",new UTF8Encoding(false));
+            var outcome=await new ProtectedClaudeLoginLauncher(folder,script,Path.Combine(folder,"absent bridge.py")).LoginAsync(Account(folder));
+            Check(outcome==new ClaudeLoginOutcome("blocked",true));
+            Check(!Directory.Exists(Path.Combine(folder,"claude-login-results"))&&!File.Exists(sentinel));
+        });
         yield return ("Protected Claude launcher preserves literal paths and accepts only an observed successful synthetic receipt",async()=>{
             var folder=Path.Combine(root,"protected-launcher","space ' 路径");Directory.CreateDirectory(folder);var config=Account(folder);var before=Directory.GetFiles(folder);
             var outcome=await Execute(folder,config,"success",Receipt(config).ToJsonString());Check(outcome==new ClaudeLoginOutcome("completed_unverified",true));
@@ -41,7 +52,8 @@ static class ProtectedClaudeLoginChecks
             var folder=Path.Combine(root,"protected-launcher","terminal-states");Directory.CreateDirectory(folder);var config=Account(folder);
             foreach(var status in new[]{"failed","blocked","unknown"}){var receipt=Receipt(config);receipt["status"]=status;var outcome=await Execute(folder,config,status,receipt.ToJsonString());Check(outcome==new ClaudeLoginOutcome(status,true));Check(Directory.GetFiles(Path.Combine(folder,status,"claude-login-results"),"*.json").Length==1);}
             var open=Receipt(config);open["process_closed"]=false;var unknown=await Execute(folder,config,"open",open.ToJsonString());Check(unknown==new ClaudeLoginOutcome("unknown",false));
-            var noScript=await new ProtectedClaudeLoginLauncher(folder,Path.Combine(folder,"missing.ps1")).LoginAsync(config);Check(noScript==new ClaudeLoginOutcome("blocked",true));
+            var marker=Path.Combine(folder,"synthetic bridge marker.py");await File.WriteAllTextAsync(marker,"# Never executed.\n");
+            var noScript=await new ProtectedClaudeLoginLauncher(folder,Path.Combine(folder,"missing.ps1"),marker).LoginAsync(config);Check(noScript==new ClaudeLoginOutcome("blocked",true));
             var unsupported=await new ProtectedClaudeLoginLauncher(folder).LoginAsync(config with {ProviderId="codex"});Check(unsupported==new ClaudeLoginOutcome("blocked",true));
         });
     }

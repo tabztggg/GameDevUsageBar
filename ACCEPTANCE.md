@@ -1,6 +1,6 @@
 # Release verification
 
-## Windows x64 preview 0.9.8
+## Windows x64 preview 0.9.9
 
 This is a Windows desktop preview. Checks distinguish source/build results,
 synthetic WPF rendering, installer execution, and real provider integration.
@@ -18,7 +18,7 @@ capture/switch safeguards. Additional fixture renders cover overview layouts,
 small floating-bar icons, expanded details, dark menus and background opacity.
 Screenshot values and account labels are synthetic.
 
-Local release verification passed 191 behavior checks, 22 WPF/Win32 checks
+Local release verification passed 192 behavior checks, 22 WPF/Win32 checks
 plus teardown, 10 footer account-switch checks, 8 provider-hover checks,
 8 visible popup-position checks, the multiple-account UI suite and 7
 native-account host checks. The Claude-account UI suite passed 13 checks.
@@ -30,6 +30,12 @@ shared hover/click details, per-slot actions and independent error states.
 The compact empty-panel regression now waits for the existing deferred WPF
 refit before checking the original height limit. A render remains available
 in local verification evidence; the production layout was not changed.
+
+Protected-login transport fixtures now inject an owned, nonexecuted dependency
+marker through a test-only internal constructor. They no longer depend on a
+real user-level Bridge installation. A separate missing-Bridge check verifies
+blocking before script launch or receipt creation. The public application
+constructor and its required maintained Bridge path are unchanged.
 
 The isolated English/Chinese installer lifecycle passed 62 checks, including
 payload integrity, shortcut/startup choices, upgrade, running-app refusal,
@@ -65,5 +71,5 @@ not launch the normal application against a user's live profile.
 - This release has no native macOS/Linux/ARM64 installer, automatic updater,
   code-signing certificate or independent antivirus certification.
 
-Use [the release notes](docs/releases/v0.9.8.md) for the final verification
+Use [the release notes](docs/releases/v0.9.9.md) for the final verification
 counts and [installation instructions](docs/installation.md) for setup.

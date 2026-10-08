@@ -2,9 +2,9 @@
 
 **把 AI 剩余额度、积分和余额，放进一条安静的 Windows 用量栏。**
 
-Windows 10/11 · x64 · v0.9.8 预览版 · 中文 / English
+Windows 10/11 · x64 · v0.9.9 预览版 · 中文 / English
 
-[English](README.md) · [下载](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.8) · [安装说明](docs/installation.zh-CN.md) · [额度接口](QUOTA-API.zh-CN.md) · [Release 说明](docs/releases/v0.9.8.md)
+[English](README.md) · [下载](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.9) · [安装说明](docs/installation.zh-CN.md) · [额度接口](QUOTA-API.zh-CN.md) · [Release 说明](docs/releases/v0.9.9.md)
 
 ![单行悬浮栏](docs/screenshots/floating-bar-zh-CN.png)
 
@@ -14,12 +14,12 @@ Windows 10/11 · x64 · v0.9.8 预览版 · 中文 / English
 
 ## 下载和启动
 
-在 [Releases](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.8) 中选择：
+在 [Releases](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.9) 中选择：
 
 | 文件 | 用途 |
 | --- | --- |
-| `GameDevUsageBar-0.9.8-win-x64-setup.exe` | 固定目录安装、开始菜单快捷方式，以及可选登录自启动 |
-| `GameDevUsageBar-0.9.8-win-x64.zip` | 解压后运行的便携版 |
+| `GameDevUsageBar-0.9.9-win-x64-setup.exe` | 固定目录安装、开始菜单快捷方式，以及可选登录自启动 |
+| `GameDevUsageBar-0.9.9-win-x64.zip` | 解压后运行的便携版 |
 | `package-manifest.json` | 版本、源码提交、文件大小及哈希 |
 | `SHA256SUMS.txt` | 核对下载文件完整性 |
 

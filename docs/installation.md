@@ -2,24 +2,24 @@
 
 [Home](../README.md) · [中文](installation.zh-CN.md)
 
-GameDevUsageBar v0.9.8 packages target **Windows 10/11 x64**. They include the .NET runtime; no separate runtime or developer tools are needed to launch the app. Native CLI/browser integrations require their corresponding software. The protected Claude Code Bridge is a separate prerequisite for Add Claude account. There is no native macOS, Linux, or ARM64 package.
+GameDevUsageBar v0.9.9 packages target **Windows 10/11 x64**. They include the .NET runtime; no separate runtime or developer tools are needed to launch the app. Native CLI/browser integrations require their corresponding software. The protected Claude Code Bridge is a separate prerequisite for Add Claude account. There is no native macOS, Linux, or ARM64 package.
 
 ## Choose a package
 
-Download from the [public GitHub release](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.8). Public release assets can be downloaded without signing into GitHub. [GitHub's public-asset access rules](https://docs.github.com/en/rest/releases/assets#get-a-release-asset)
+Download from the [public GitHub release](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.9). Public release assets can be downloaded without signing into GitHub. [GitHub's public-asset access rules](https://docs.github.com/en/rest/releases/assets#get-a-release-asset)
 
 | File | Purpose |
 | --- | --- |
-| `GameDevUsageBar-0.9.8-win-x64-setup.exe` | Current-user installation with English/Chinese setup UI |
-| `GameDevUsageBar-0.9.8-win-x64.zip` | Portable folder; extract and open `GameDevUsageBar.exe` |
+| `GameDevUsageBar-0.9.9-win-x64-setup.exe` | Current-user installation with English/Chinese setup UI |
+| `GameDevUsageBar-0.9.9-win-x64.zip` | Portable folder; extract and open `GameDevUsageBar.exe` |
 | `package-manifest.json` | Version, source commit, asset sizes, and SHA256 hashes |
 | `SHA256SUMS.txt` | Release-asset SHA256 hashes |
 
 The downloads are unsigned. Verify their source and hashes; do not turn off security software. If a scanner blocks a file, retain its detection details for investigation. A matching hash verifies integrity, not antivirus clearance.
 
 ```powershell
-Get-FileHash -Algorithm SHA256 .\GameDevUsageBar-0.9.8-win-x64-setup.exe
-Get-FileHash -Algorithm SHA256 .\GameDevUsageBar-0.9.8-win-x64.zip
+Get-FileHash -Algorithm SHA256 .\GameDevUsageBar-0.9.9-win-x64-setup.exe
+Get-FileHash -Algorithm SHA256 .\GameDevUsageBar-0.9.9-win-x64.zip
 ```
 
 Compare the hashes with the matching filenames in the release's `SHA256SUMS.txt`.

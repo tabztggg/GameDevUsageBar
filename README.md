@@ -4,9 +4,9 @@
 
 **Your AI quotas, credits, and balances. One quiet Windows bar.**
 
-Windows 10/11 · x64 · English / 简体中文 · v0.9.8 preview
+Windows 10/11 · x64 · English / 简体中文 · v0.9.9 preview
 
-[Download](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.8) · [Installation](docs/installation.md) · [中文](README.zh-CN.md) · [Quota API](QUOTA-API.md) · [Release notes](docs/releases/v0.9.8.md)
+[Download](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.9) · [Installation](docs/installation.md) · [中文](README.zh-CN.md) · [Quota API](QUOTA-API.md) · [Release notes](docs/releases/v0.9.9.md)
 
 </div>
 
@@ -18,12 +18,12 @@ Keep Claude and Codex quota windows, Tripo and GRSAI credits, API balances, and 
 
 ## Get started
 
-Download the Windows x64 package from [Releases](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.8):
+Download the Windows x64 package from [Releases](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.9):
 
 | Package | Best for |
 | --- | --- |
-| `GameDevUsageBar-0.9.8-win-x64-setup.exe` | A fixed installation with Start menu shortcuts and optional logon startup |
-| `GameDevUsageBar-0.9.8-win-x64.zip` | Extracting and running without an installer |
+| `GameDevUsageBar-0.9.9-win-x64-setup.exe` | A fixed installation with Start menu shortcuts and optional logon startup |
+| `GameDevUsageBar-0.9.9-win-x64.zip` | Extracting and running without an installer |
 | `package-manifest.json` | Package version, source commit, asset sizes, and hashes |
 | `SHA256SUMS.txt` | Checking download integrity |
 

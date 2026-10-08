@@ -2,24 +2,24 @@
 
 [主页](../README.zh-CN.md) · [English](installation.md)
 
-v0.9.8 安装包面向 **Windows 10/11 x64**，包含 .NET 运行时，启动应用无须另装运行时或开发工具。原生 CLI/浏览器功能需要对应软件；添加 Claude 账号要求另外安装受保护的 Claude Code Bridge。本版没有 macOS、Linux 或原生 ARM64 安装包。
+v0.9.9 安装包面向 **Windows 10/11 x64**，包含 .NET 运行时，启动应用无须另装运行时或开发工具。原生 CLI/浏览器功能需要对应软件；添加 Claude 账号要求另外安装受保护的 Claude Code Bridge。本版没有 macOS、Linux 或原生 ARM64 安装包。
 
 ## 选择下载
 
-在[公开 GitHub Release](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.8) 下载。公开发布文件无须登录 GitHub 即可下载，见 [GitHub 公开文件访问规则](https://docs.github.com/en/rest/releases/assets#get-a-release-asset)。
+在[公开 GitHub Release](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.9) 下载。公开发布文件无须登录 GitHub 即可下载，见 [GitHub 公开文件访问规则](https://docs.github.com/en/rest/releases/assets#get-a-release-asset)。
 
 | 文件 | 用途 |
 | --- | --- |
-| `GameDevUsageBar-0.9.8-win-x64-setup.exe` | 当前用户安装，安装界面支持中英文 |
-| `GameDevUsageBar-0.9.8-win-x64.zip` | 解压后运行 `GameDevUsageBar.exe` |
+| `GameDevUsageBar-0.9.9-win-x64-setup.exe` | 当前用户安装，安装界面支持中英文 |
+| `GameDevUsageBar-0.9.9-win-x64.zip` | 解压后运行 `GameDevUsageBar.exe` |
 | `package-manifest.json` | 版本、源码提交、文件大小及 SHA256 |
 | `SHA256SUMS.txt` | 发布文件的 SHA256 |
 
 文件未签名。核对来源和 SHA256；不要关闭安全软件。若被拦截，请保留具体检测记录以便调查。哈希一致只证明完整性，不是杀毒认证。
 
 ```powershell
-Get-FileHash -Algorithm SHA256 .\GameDevUsageBar-0.9.8-win-x64-setup.exe
-Get-FileHash -Algorithm SHA256 .\GameDevUsageBar-0.9.8-win-x64.zip
+Get-FileHash -Algorithm SHA256 .\GameDevUsageBar-0.9.9-win-x64-setup.exe
+Get-FileHash -Algorithm SHA256 .\GameDevUsageBar-0.9.9-win-x64.zip
 ```
 
 与 Release 中 `SHA256SUMS.txt` 的对应文件比较。

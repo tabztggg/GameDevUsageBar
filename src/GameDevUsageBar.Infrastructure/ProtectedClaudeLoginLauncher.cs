@@ -4,14 +4,30 @@ using System.Text;
 using System.Text.Json;
 using GameDevUsageBar.Core;
 
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("GameDevUsageBar.Tests")]
+
 namespace GameDevUsageBar.Infrastructure;
 
 public sealed record ClaudeLoginOutcome(string Status, bool ProcessClosed);
 
 // Only a user click calls the maintained Bridge's attended auth-login entry.
 // This application never constructs a native Claude command or logs child output.
-public sealed class ProtectedClaudeLoginLauncher(string root, string? launcherPath = null)
+public sealed class ProtectedClaudeLoginLauncher
 {
+    private readonly string root;
+    private readonly string? launcherPath;
+    private readonly string bridgePath;
+
+    public ProtectedClaudeLoginLauncher(string root, string? launcherPath = null)
+        : this(root, launcherPath, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".codex", "skills", "claude-code-bridge", "scripts", "bridge.py")) { }
+
+    // Only the fixture assembly can substitute an owned dependency marker.
+    // The application always uses the maintained user-level Bridge path above.
+    internal ProtectedClaudeLoginLauncher(string root, string? launcherPath, string bridgePath)
+    {
+        this.root = root; this.launcherPath = launcherPath; this.bridgePath = bridgePath;
+    }
     public static string DirectoryHash(string directory) => Convert.ToHexString(SHA256.HashData(
         Encoding.UTF8.GetBytes(Path.GetFullPath(directory).Replace('/', '\\').TrimEnd('\\').ToLowerInvariant()))).ToLowerInvariant();
 
@@ -20,8 +36,7 @@ public sealed class ProtectedClaudeLoginLauncher(string root, string? launcherPa
         if (account.ProviderId != "claude" || account.SourceMode != "local-oauth" || account.ClaudeConfigDirectory is null)
             return new("blocked", true);
         var script = launcherPath ?? Path.Combine(AppContext.BaseDirectory, "tools", "Start-ClaudeAccountLogin.ps1");
-        var bridge = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "skills", "claude-code-bridge", "scripts", "bridge.py");
-        if (!File.Exists(script) || !File.Exists(bridge)) return new("blocked", true);
+        if (!File.Exists(script) || !File.Exists(bridgePath)) return new("blocked", true);
         var receipts = Path.Combine(root, "claude-login-results");
         Directory.CreateDirectory(receipts);
         var receipt = Path.Combine(receipts, Guid.NewGuid().ToString("N") + ".json");
