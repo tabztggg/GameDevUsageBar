@@ -187,14 +187,21 @@ public sealed partial class ApplicationHost : IAsyncDisposable
     public ApplicationHost(string root,IReadOnlyList<IProviderAdapter>? adapters = null,NativeOAuthStore? native = null,Func<string,bool>? nativeCliBusyGuard = null)
     {
         this.nativeCliBusyGuard=nativeCliBusyGuard;
-        Root=root; Adapters=adapters ?? ProviderCatalog.Create(); Settings=new(root,ReportHandledError); Secrets=new(root,ReportHandledError);
+        Root=root; Adapters=adapters ?? ProviderCatalog.Create(); Secrets=new(root,ReportHandledError);
         var nativeStore=native??new NativeOAuthStore(onError:ReportHandledError);
-        var renewal=native is null?new NativeClaudeRenewal(root,nativeStore,CommitRenewalBindingAsync,onError:ReportHandledError):null;
+        Settings=new(root,ReportHandledError,nativeStore);
+        var renewal=native is null?new NativeClaudeRenewal(root,nativeStore,CommitRenewalBindingAsync,onError:ReportHandledError,currentBindingGuard:CurrentClaudeBinding):null;
         Queries=new(Secrets,Adapters.Select(a=>a.Definition),native:nativeStore,nativeVault:new NativeAuthVault(root,nativeStore,onError:ReportHandledError),renewal:renewal,onError:ReportHandledError);
         Coordinator=new(Queries,new DiskSnapshotStore(root,ReportHandledError));Coordinator.ErrorObserved+=ReportHandledError;
         foreach(var adapter in Adapters.OfType<ApiAdapter>())adapter.ErrorObserved+=ReportHandledError;
     }
     private void ReportHandledError(Exception error)=>RuntimeLog?.RecordException("handled_exception",error);
+    private bool CurrentClaudeBinding(AccountConfig expected)
+    {
+        if(pausedClaudeLogins.ContainsKey(expected.SlotId))return false;
+        var current=Accounts.SingleOrDefault(a=>a.SlotId==expected.SlotId);
+        return current is {ProviderId:"claude",SourceMode:"local-oauth",Enabled:true}&&current.NativeIdentity==expected.NativeIdentity&&SameClaudeProfile(current,expected);
+    }
     private async Task<AccountConfig> CommitRenewalBindingAsync(AccountConfig expected,AccountConfig proposed)
     {
         await saving.WaitAsync();
@@ -203,6 +210,7 @@ public sealed partial class ApplicationHost : IAsyncDisposable
             var current=Accounts.SingleOrDefault(a=>a.SlotId==expected.SlotId);
             if(current is null||current.ProviderId!="claude"||!current.Enabled||current.SourceMode!="local-oauth"||current.NativeIdentity!=expected.NativeIdentity&&current.NativeIdentity!=proposed.NativeIdentity)
                 throw new QueryException(FailureKind.IdentityChanged);
+            if(!SameClaudeProfile(current,expected)||!SameClaudeProfile(current,proposed))throw new QueryException(FailureKind.IdentityChanged);
             if(current.NativeIdentity==proposed.NativeIdentity)return current;
             var updated=current with {NativeIdentity=proposed.NativeIdentity};
             var next=Accounts.Select(a=>a.SlotId==current.SlotId?updated:a).ToList();
@@ -249,7 +257,22 @@ public sealed partial class ApplicationHost : IAsyncDisposable
         }
         finally{saving.Release();}
     }
-    public async Task SaveAsync(AccountConfig config,string? newKey = null,AccountConfig? expectedCurrent=null)
+    private bool SameClaudeProfile(AccountConfig a,AccountConfig b)=>string.Equals(Path.GetFullPath(Queries.Native.PathFor(a)),Path.GetFullPath(Queries.Native.PathFor(b)),StringComparison.OrdinalIgnoreCase);
+    private void CheckClaudeBinding(AccountConfig proposed,AccountConfig? current,bool approveClaudeLogin,AccountConfig? expectedCurrent)
+    {
+        if(proposed.ProviderId!="claude"||proposed.SourceMode!="local-oauth")return;
+        if(Accounts.Any(a=>a.SlotId!=proposed.SlotId&&a.ProviderId=="claude"&&a.SourceMode=="local-oauth"&&SameClaudeProfile(a,proposed)))
+            throw new InvalidDataException("A Claude configuration directory is already bound to another account.");
+        if(current is {ProviderId:"claude",SourceMode:"local-oauth",NativeIdentity:not null})
+        {
+            if(!SameClaudeProfile(current,proposed))throw new QueryException(FailureKind.IdentityChanged);
+            if(proposed.Enabled&&proposed.NativeIdentity!=current.NativeIdentity&&!approveClaudeLogin)throw new QueryException(FailureKind.IdentityChanged);
+        }
+        if(approveClaudeLogin&&(expectedCurrent is null||proposed.NativeIdentity is null||proposed.CredentialRevision is null||proposed.CredentialRevision==expectedCurrent.CredentialRevision))
+            throw new InvalidOperationException("A completed Claude login must bind the unchanged account revision.");
+        if(approveClaudeLogin&&proposed.NativeIdentity is {} reviewed&&HasDuplicateClaudeIdentity(proposed.SlotId,reviewed))throw new QueryException(FailureKind.IdentityChanged);
+    }
+    public async Task SaveAsync(AccountConfig config,string? newKey = null,AccountConfig? expectedCurrent=null,bool approveClaudeLogin=false)
     {
         config.Validate();
         if(expectedCurrent is not null)
@@ -259,7 +282,12 @@ public sealed partial class ApplicationHost : IAsyncDisposable
         }
         if(config.SourceMode=="local-oauth" && config.Enabled)
         {
-            config=config with {NativeIdentity=Queries.Native.Read(config.ProviderId).Identity,CredentialSource="local-oauth"};
+            var old=Accounts.SingleOrDefault(account=>account.SlotId==config.SlotId);
+            CheckClaudeBinding(config,old,approveClaudeLogin,expectedCurrent);
+            var identity=Queries.Native.ForAccount(config).Read(config.ProviderId).Identity;
+            if(config.ProviderId=="claude"&&approveClaudeLogin&&identity!=config.NativeIdentity)throw new QueryException(FailureKind.IdentityChanged);
+            if(config.ProviderId=="claude"&&old is {SourceMode:"local-oauth",NativeIdentity:not null}&&identity!=old.NativeIdentity&&!approveClaudeLogin)throw new QueryException(FailureKind.IdentityChanged);
+            config=config with {NativeIdentity=identity,CredentialSource="local-oauth"};
             await Queries.SourceSavedAsync(config);
         }
         if(config.ProviderId=="tripo" && config.Enabled && string.IsNullOrEmpty(newKey) && !config.HasUsableCredential)
@@ -270,7 +298,8 @@ public sealed partial class ApplicationHost : IAsyncDisposable
         {
             var adapter=Adapters.Single(a=>a.Definition.Id==config.ProviderId);
             var old=Accounts.SingleOrDefault(account=>account.SlotId==config.SlotId);
-            if(config.Enabled&&config.SourceMode=="local-oauth"&&Queries.Native.Read(config.ProviderId).Identity!=config.NativeIdentity)throw new QueryException(FailureKind.IdentityChanged);
+            CheckClaudeBinding(config,old,approveClaudeLogin,expectedCurrent);
+            if(config.Enabled&&config.SourceMode=="local-oauth"&&Queries.Native.ForAccount(config).Read(config.ProviderId).Identity!=config.NativeIdentity)throw new QueryException(FailureKind.IdentityChanged);
             if(expectedCurrent is not null&&(old is null||old!=(expectedCurrent with {IsActive=old.IsActive})))
                 throw new InvalidOperationException("Account changed while the credential was being captured.");
             if(old is not null&&old.ProviderId!=config.ProviderId)throw new InvalidDataException("An account cannot change providers.");

@@ -1,0 +1,31 @@
+--- scripts/bridge.py
++++ scripts/bridge.py
+@@ -1982,6 +1982,9 @@
+             p.add_argument("--authorization", required=True)
+         if name == "remote-attest-billing":
+             p.add_argument("--attestation", required=True)
++    p = sub.add_parser("auth-login", help="Attended subscription login in one isolated GameDevUsageBar-owned profile")
++    p.add_argument("--config-dir", required=True)
++    p.add_argument("--result", help="Fresh absolute JSON receipt path; defaults inside the chosen profile")
+     p = sub.add_parser("prepare", help="Freeze a local preview; never sends anything")
+     p.add_argument("--manifest", required=True)
+     p.add_argument("--out", required=True)
+@@ -2034,6 +2037,9 @@
+         elif args.command.startswith("remote-"):
+             import remote_ssh
+             result = remote_ssh.dispatch(args, sys.modules[__name__])
++        elif args.command == "auth-login":
++            import auth_login
++            result = auth_login.dispatch(args, sys.modules[__name__])
+         elif args.command == "prepare":
+             result = prepare(args)
+         elif args.command in {"quota", "queue", "queue-status", "queue-hold"}:
+@@ -2054,6 +2060,8 @@
+         else:
+             result = finalize_task(args)
+         print(json.dumps(result, ensure_ascii=False, indent=2))
++        if args.command == "auth-login":
++            return 0 if result.get("status") == "completed_unverified" else 3
+         return 3 if result.get("status") in {"UNKNOWN", "incomplete", "failed_before_send"} else 0
+     except (QuotaDeferred, BridgeBusy) as error:
+         print(json.dumps(error.details, ensure_ascii=False, indent=2))

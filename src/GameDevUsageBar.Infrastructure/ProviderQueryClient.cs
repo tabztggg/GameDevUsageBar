@@ -37,6 +37,8 @@ public sealed class ProviderQueryClient : IQueryClient,IAuthMaintenance,IDisposa
     public AuthMaintenance? Observe(AccountConfig config)=>renewal?.Observe(config);
     public Task<AccountConfig> MaintainAsync(AccountConfig config,CancellationToken ct)=>renewal?.MaintainAsync(config,ct)??Task.FromResult(config);
     public Task SourceSavedAsync(AccountConfig approved)=>renewal?.SourceSavedAsync(approved)??Task.CompletedTask;
+    public Task<IDisposable> PauseClaudeRenewalAsync(CancellationToken ct=default)=>renewal?.PauseAsync(ct)??Task.FromResult<IDisposable>(new NoRenewalLease());
+    private sealed class NoRenewalLease:IDisposable{public void Dispose(){}}
     private sealed class SharedHandler(HttpMessageHandler inner):HttpMessageHandler
     {protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken ct)=>new HttpMessageInvoker(inner,false).SendAsync(request,ct);}
     public async Task<byte[]> ReadAsync(ProviderDefinition definition,AccountConfig account,CancellationToken ct)
@@ -51,7 +53,7 @@ public sealed class ProviderQueryClient : IQueryClient,IAuthMaintenance,IDisposa
         string secret,accountId=account.AccountId;
         if(account.SourceMode=="local-oauth")
         {
-            var credential=native.Read(account.ProviderId);
+            var credential=native.ForAccount(account).Read(account.ProviderId);
             if(credential.Identity!=account.NativeIdentity)throw new QueryException(FailureKind.IdentityChanged);
             secret=credential.Token;accountId=credential.AccountId;
         }

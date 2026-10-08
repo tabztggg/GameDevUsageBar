@@ -1,0 +1,18 @@
+--- scripts/browser.py
++++ scripts/browser.py
+@@ -244,13 +244,13 @@
+     return url
+ 
+ 
+-def open_browser(config, url="https://claude.ai/"):
++def open_browser(config, url="https://claude.ai/", *, environment=None):
+     url = validate_url(url)
+     checks = status(config)
+     executable = Path(checks["executable"])
+     profile = Path(checks["profile_dir"])
+     # No shell, ordinary profile, migration, argument forwarding, or fallback.
+-    env = build_proxy_environment(dict(os.environ), {"proxy_ip": checks["proxy_ip"], "proxy_port": checks["proxy_port"]})
++    env = build_proxy_environment(dict(os.environ) if environment is None else dict(environment), {"proxy_ip": checks["proxy_ip"], "proxy_port": checks["proxy_port"]})
+     for name in list(env):
+         if name.upper().startswith("MOZ_"):
+             env.pop(name)

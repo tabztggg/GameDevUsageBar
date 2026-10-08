@@ -31,6 +31,7 @@ public sealed class SurfaceManager : IDisposable
         Panel.DismissRequested+=DismissFromInput;
         Panel.OverviewRequested+=ShowOverview;Panel.SettingsRequested+=ShowSettings;
         Panel.WidgetRequested+=ShowWidget;Panel.ExitRequested+=PanelExit;Panel.AccountRequested+=ShowAccount;
+        Panel.AccountSlotRequested+=ShowAccountSlot;
         Panel.AccountSwitchRequested+=SelectAccount;Panel.ManageAccountsRequested+=ShowAccounts;
         Panel.CliAccountSwitchRequested+=SwitchCliAccount;
         overview.DisplaySettingsRequested+=ShowSettings;
@@ -58,7 +59,7 @@ public sealed class SurfaceManager : IDisposable
         if(!handingOff)toggle.Deactivated(NativeWindows.InputToken,NativeWindows.PressedOnTray);
         Panel.Hide();
     }
-    public void HidePanel() {handingOff=true;try {Panel.Hide();toggle.Reset();}finally {handingOff=false;}}
+    public void HidePanel() {handingOff=true;try {Widget.HideProviderHover();Panel.Hide();toggle.Reset();}finally {handingOff=false;}}
     public void ShowOverview() {if(disposed)return;HidePanel();Overview.ShowPopup();}
     public void ShowSettings()
     {
@@ -68,13 +69,16 @@ public sealed class SurfaceManager : IDisposable
         displaySettings.Closed+=(_,_)=>displaySettings=null;displaySettings.Show();
     }
     private void ShowAccount(string id)
+        =>ShowAccountSlot(id,host.Coordinator.Get(id).Config.SlotId);
+    private void ShowAccountSlot(string id,Guid slot)
     {
         ShowOverview();
         var adapter=host.Adapters.FirstOrDefault(a=>a.Definition.Id==id);
-        if(adapter is null)return;
-        var dialog=new AccountWindow(host,adapter.Definition,host.Coordinator.Get(id).Config) {Owner=Overview};
+        var account=host.Coordinator.GetAccounts(id).FirstOrDefault(state=>state.Config.SlotId==slot);
+        if(adapter is null || account is null)return;
+        var dialog=new AccountWindow(host,adapter.Definition,account.Config) {Owner=Overview};
         dialog.ShowDialog();
-        if(dialog.Saved && host.Coordinator.Get(id).Config.Enabled) _=hub.RequestManualRefresh(id);
+        if(dialog.Saved && host.Coordinator.GetAccounts(id).FirstOrDefault(state=>state.Config.SlotId==slot)?.Config.Enabled==true) _=hub.RequestManualRefresh(id,slot);
     }
     public void ShowAccounts(string id){ShowOverview();Overview.ShowAccounts(id);}
     public async void SelectAccount(string id,Guid slot)
@@ -87,14 +91,19 @@ public sealed class SurfaceManager : IDisposable
         var model=hub.Models.FirstOrDefault(m=>m.Id==id);
         if(model is null || !model.SupportsCliAccountSwitch)return;
         var label=model.CliAccountChoices.FirstOrDefault(account=>account.SlotId==slot)?.Label??"";
-        switchingCliAccount=true;model.SetAccountSwitchFeedback("Switching CLI login…",true,label);
+        var accountModel=hub.GetAccountModels(id).FirstOrDefault(account=>account.SlotId==slot);
+        var affected=hub.Models.Concat(hub.Models.SelectMany(provider=>hub.GetAccountModels(provider.Id))).Distinct().ToArray();
+        switchingCliAccount=true;
+        foreach(var affectedModel in affected)affectedModel.SetAccountSwitchBusy(true);
+        model.SetAccountSwitchFeedback("Switching CLI login…",true,label);
+        accountModel?.SetAccountSwitchFeedback("Switching CLI login…",true,label);
         try {
             var result=await host.SwitchCliLoginAsync(id,slot);
-            if(!disposed)model.SetAccountSwitchFeedback(result.MessageKey,accountLabel:label);
+            if(!disposed){model.SetAccountSwitchFeedback(result.MessageKey,accountLabel:label);accountModel?.SetAccountSwitchFeedback(result.MessageKey,accountLabel:label);}
         } catch(Exception error) {
             host.RuntimeLog?.RecordException("handled_exception",error);
-            if(!disposed)model.SetAccountSwitchFeedback("The account operation could not finish. No credentials were logged.",accountLabel:label);
-        } finally {switchingCliAccount=false;}
+            if(!disposed){model.SetAccountSwitchFeedback("The account operation could not finish. No credentials were logged.",accountLabel:label);accountModel?.SetAccountSwitchFeedback("The account operation could not finish. No credentials were logged.",accountLabel:label);}
+        } finally {switchingCliAccount=false;foreach(var affectedModel in affected)affectedModel.SetAccountSwitchBusy(false);}
     }
     public void ShowNetwork()
     {
@@ -115,7 +124,7 @@ public sealed class SurfaceManager : IDisposable
     public void ShowWidget()=>preferences.Update(p=>p with {Widget=p.WidgetOrDefault with {Visible=true}});
     private void ShowProvider(string id)
     {
-        if(disposed)return;HidePanel();Panel.SelectProvider(id);var bounds=NativeWindows.Bounds(Widget);
+        if(disposed)return;Widget.HideProviderHover();HidePanel();Panel.SelectProvider(id);var bounds=NativeWindows.Bounds(Widget);
         Panel.PositionAt(new NativeWindows.Point {X=(int)bounds.Left,Y=(int)bounds.Bottom});Panel.Show();Panel.Activate();
     }
     public void ToggleWidget()=>preferences.Update(p=>p with {Widget=p.WidgetOrDefault with {Visible=!p.WidgetOrDefault.Visible}});
@@ -153,6 +162,7 @@ public sealed class SurfaceManager : IDisposable
         Widget.SettingsRequested-=ShowSettings;Widget.ProviderRequested-=ShowProvider;
         Panel.AccountSwitchRequested-=SelectAccount;Panel.ManageAccountsRequested-=ShowAccounts;
         Panel.CliAccountSwitchRequested-=SwitchCliAccount;
+        Panel.AccountSlotRequested-=ShowAccountSlot;
         SystemEvents.DisplaySettingsChanged-=DisplayChanged;SystemEvents.UserPreferenceChanged-=UserPreferenceChanged;SystemEvents.PowerModeChanged-=PowerChanged;
         Panel.AllowClose=Widget.AllowClose=Overview.AllowClose=true;
         displaySettings?.Close();Panel.Close();Widget.Close();Overview.Close();

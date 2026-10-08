@@ -39,6 +39,7 @@ $shell = New-Object -ComObject Shell.Application
 $windows = $shell.Windows()
 $window = $null
 $explorerProcess = $null
+$launchMethod = 'Explorer folder-view Application.ShellExecute'
 foreach ($candidate in $windows) {
     if ([IO.Path]::GetFileName([string]$candidate.FullName) -ine 'explorer.exe') { continue }
     [uint32]$ownerId = 0
@@ -51,7 +52,27 @@ foreach ($candidate in $windows) {
     }
 }
 if ($null -eq $window) {
-    throw 'No Explorer folder view is available. Open a File Explorer window or launch GameDevUsageBar from the Start menu. No command-process fallback was attempted.'
+    # The desktop is itself an Explorer-owned folder view and remains available
+    # when every File Explorer window is closed. Obtain its automation object
+    # from the registered desktop view, never a fresh ShellExecute object.
+    # https://devblogs.microsoft.com/oldnewthing/20131118-00/?p=2643
+    $desktopLocation = 0
+    $desktopRoot = 0
+    $desktopHwnd = 0
+    $candidate = $windows.FindWindowSW([ref]$desktopLocation, [ref]$desktopRoot, 8, [ref]$desktopHwnd, 1)
+    if ($null -ne $candidate -and [IO.Path]::GetFileName([string]$candidate.FullName) -ieq 'explorer.exe') {
+        [uint32]$ownerId = 0
+        [void][GameDevUsageBar.ExplorerLaunchProbe]::GetWindowThreadProcessId([IntPtr]$desktopHwnd, [ref]$ownerId)
+        $owner = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $ownerId)
+        if ($null -ne $owner -and $owner.Name -ieq 'explorer.exe' -and $null -ne $candidate.Document.Application) {
+            $window = $candidate
+            $explorerProcess = $owner
+            $launchMethod = 'Explorer desktop-view Application.ShellExecute'
+        }
+    }
+}
+if ($null -eq $window) {
+    throw 'No verified Explorer folder or desktop view is available. Launch GameDevUsageBar from the Start menu. No command-process fallback was attempted.'
 }
 # Use the Application obtained from a view hosted by Explorer. A fresh
 # Shell.Application.ShellExecute can instead launch from this command process.
@@ -73,7 +94,7 @@ try {
         ParentProcessId = $explorerProcess.ProcessId
         ParentName = $explorerProcess.Name
         InAnyJob = [GameDevUsageBar.ExplorerLaunchProbe]::InAnyJob($appProcess.ProcessId)
-        LaunchMethod = 'Explorer folder-view Application.ShellExecute'
+        LaunchMethod = $launchMethod
     }
 } catch {
     # A COM/RPC failure can occur after Explorer has already created the process.

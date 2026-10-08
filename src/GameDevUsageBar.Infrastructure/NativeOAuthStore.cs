@@ -11,12 +11,41 @@ public sealed record NativeOAuth(string Token,string AccountId,string Identity);
 public sealed class NativeOAuthStore(string? testHome=null,TimeProvider? clock=null,Action<Exception>? onError=null)
 {
     private readonly TimeProvider time=clock ?? TimeProvider.System;
+    private string? claudeConfigDirectory;
+    public NativeOAuthStore ForAccount(AccountConfig account)
+    {
+        if(account.ClaudeConfigDirectory is null)return claudeConfigDirectory is null?this:new NativeOAuthStore(testHome,time,onError);
+        try
+        {
+            account.Validate();
+            var directory=ProviderSources.NormalizeClaudeConfigDirectory(account.ClaudeConfigDirectory);
+            ValidateLocalDirectory(directory);
+            return new NativeOAuthStore(testHome,time,onError){claudeConfigDirectory=directory};
+        }
+        catch(QueryException){throw;}catch(Exception error){ErrorObserver.Report(onError,error);throw new QueryException(FailureKind.Policy);}
+    }
+    public string PathFor(AccountConfig account)=>ForAccount(account).PathFor(account.ProviderId);
+    public static void ValidateLocalDirectory(string directory)
+    {
+        var root=Path.GetPathRoot(directory)??throw new InvalidDataException("Invalid local configuration directory.");
+        if(new DriveInfo(root).DriveType==DriveType.Network)throw new InvalidDataException("A network configuration directory is unsupported.");
+        // Junctions/symlinks could make a frozen pathname point to another login.
+        // Check metadata only; a not-yet-created account directory is permitted.
+        string? candidate=directory;
+        while(candidate is not null)
+        {
+            try{var attributes=File.GetAttributes(candidate);if((attributes&FileAttributes.ReparsePoint)!=0||(attributes&FileAttributes.Directory)==0)throw new InvalidDataException("An aliased configuration directory is unsupported.");}
+            catch(Exception error)when(error is FileNotFoundException or DirectoryNotFoundException){}
+            candidate=Path.GetDirectoryName(candidate);
+        }
+    }
     public string PathFor(string id)
     {
+        if(id=="claude"&&claudeConfigDirectory is {} selected)ValidateLocalDirectory(selected);
         var home=testHome ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         return id switch {
             "codex"=>Path.Combine(testHome is null ? Environment.GetEnvironmentVariable("CODEX_HOME") ?? Path.Combine(home,".codex") : Path.Combine(home,".codex"),"auth.json"),
-            "claude"=>Path.Combine(testHome is null ? Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR") ?? Path.Combine(home,".claude") : Path.Combine(home,".claude"),".credentials.json"),
+            "claude"=>Path.Combine(claudeConfigDirectory ?? (testHome is null ? Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR") ?? Path.Combine(home,".claude") : Path.Combine(home,".claude")),".credentials.json"),
             "gemini-cli"=>Path.Combine(home,".gemini","oauth_creds.json"),_=>throw new QueryException(FailureKind.Policy)
         };
     }

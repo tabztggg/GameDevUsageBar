@@ -93,6 +93,12 @@ public sealed class CardModel(ProviderDefinition definition, ProviderState state
     public string Id => definition.Id;
     public string Name => L.T(definition.Name);
     public Guid SlotId => State.Config.SlotId;
+    public string AccountLabel => State.Config.Label;
+    public string AccountSource => $"{L.T(definition.Channel)}"+(Id=="tripo" ? " · "+L.T(TripoRegions.Label(State.Config.TripoRegion)) : Id=="grsai" ? " · "+L.T(TripoRegions.Label(State.Config.QueryRegion)) : "")+(ProviderSources.SupportsLocal(Id)?" · "+L.T(ProviderSources.ModeLabel(Id,State.Config.SourceMode)):"")+(Id=="gemini"&&State.Config.ProjectId.Length>0?" · "+State.Config.ProjectId:"");
+    // This is the bar's display selection, not a claim about a running CLI's identity.
+    public bool IsDisplayedAccount => AccountChoices.Any(account=>account.SlotId==SlotId && account.IsCurrent);
+    public bool CanSelectDisplayedAccount => !IsDisplayedAccount && definition.CanConfigure && !definition.IsDemo;
+    public bool CanSwitchThisCliAccount => SupportsCliAccountSwitch && CanSwitchAccount && CliAccountChoices.Any(account=>account.SlotId==SlotId);
     public IReadOnlyList<AccountChoice> AccountChoices => accountChoices ?? Array.AsReadOnly(new[] { new AccountChoice(SlotId,State.Config.Label,PrimarySummary,CompactBadge,true) });
     public bool SupportsCliAccountSwitch=>Id is "codex" or "claude";
     public IReadOnlyList<AccountChoice> CliAccountChoices=>cliAccountChoices;
@@ -100,12 +106,20 @@ public sealed class CardModel(ProviderDefinition definition, ProviderState state
     public string AccountSwitchHint=>L.T(SupportsCliAccountSwitch ? "Choose a saved CLI account. Only its auth file is replaced; existing sessions stay unchanged." : "Choose the displayed account");
     public string AccountSwitchFeedback=>accountSwitchFeedback.Length==0?"":(accountSwitchLabel.Length>0?accountSwitchLabel+" · ":"")+L.T(accountSwitchFeedback);
     public bool AccountSwitchBusy=>accountSwitchBusy;
+    public void SetAccountSwitchBusy(bool busy)
+    {
+        accountSwitchBusy=busy;
+        PropertyChanged?.Invoke(this,new(nameof(AccountSwitchBusy)));
+        PropertyChanged?.Invoke(this,new(nameof(CanSwitchAccount)));
+        PropertyChanged?.Invoke(this,new(nameof(CanSwitchThisCliAccount)));
+    }
     public void SetAccountSwitchFeedback(string message,bool busy=false,string accountLabel="")
     {
         accountSwitchFeedback=message;accountSwitchBusy=busy;accountSwitchLabel=accountLabel;
         PropertyChanged?.Invoke(this,new(nameof(AccountSwitchFeedback)));
         PropertyChanged?.Invoke(this,new(nameof(AccountSwitchBusy)));
         PropertyChanged?.Invoke(this,new(nameof(CanSwitchAccount)));
+        PropertyChanged?.Invoke(this,new(nameof(CanSwitchThisCliAccount)));
     }
     public void SetAccountChoices(IReadOnlyList<AccountChoice> value,IReadOnlyList<AccountChoice>? savedCli=null)
     {
@@ -116,6 +130,9 @@ public sealed class CardModel(ProviderDefinition definition, ProviderState state
         PropertyChanged?.Invoke(this,new(nameof(AccountChoices)));
         PropertyChanged?.Invoke(this,new(nameof(CliAccountChoices)));
         PropertyChanged?.Invoke(this,new(nameof(CanSwitchAccount)));
+        PropertyChanged?.Invoke(this,new(nameof(IsDisplayedAccount)));
+        PropertyChanged?.Invoke(this,new(nameof(CanSelectDisplayedAccount)));
+        PropertyChanged?.Invoke(this,new(nameof(CanSwitchThisCliAccount)));
     }
     public string Channel => $"{L.T(definition.Channel)}"+(Id=="tripo" ? " · "+L.T(TripoRegions.Label(State.Config.TripoRegion)) : Id=="grsai" ? " · "+L.T(TripoRegions.Label(State.Config.QueryRegion)) : "")+(ProviderSources.SupportsLocal(Id)?" · "+L.T(ProviderSources.ModeLabel(Id,State.Config.SourceMode)):"")+(Id=="gemini"&&State.Config.ProjectId.Length>0?" · "+State.Config.ProjectId:"")+$" · {State.Config.Label}";
     public string Accent => SystemParameters.HighContrast ? SystemColors.WindowTextColor.ToString() : definition.Accent;
@@ -146,6 +163,11 @@ public sealed class CardModel(ProviderDefinition definition, ProviderState state
         get { var primary=PrimaryMetrics;return Metrics.Where(m=>!primary.Contains(m)).ToArray(); }
     }
     public bool HasSecondaryMetrics=>SecondaryMetrics.Count>0;
+    public IReadOnlyList<MetricView> CompactFeaturedMetrics
+    {
+        get {var quotas=Metrics.Where(metric=>metric.Kind==MetricKind.Quota).ToArray();return quotas.Length>0?quotas:PrimaryMetrics;}
+    }
+    public IReadOnlyList<MetricView> CompactOtherMetrics=>Metrics.Where(metric=>!CompactFeaturedMetrics.Contains(metric)).ToArray();
     public string PrimarySummary=>string.Join(" · ",PrimaryMetrics.Select(m=>m.Label+" "+m.OverviewDisplay));
     public string PlanLabel=>State.LastSuccess?.Plan is {Length:>0} plan ? plan.ToLowerInvariant() switch {"pro"=>"Pro","plus"=>"Plus",_=>plan} : "";
     public string DetailsLabel=>L.T("Details");

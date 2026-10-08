@@ -403,6 +403,8 @@ foreach(var api in QuotaApiChecks.Cases())await Test(api.Name,api.Run);
 foreach(var item in MultiAccountChecks.Cases(root,adapters))await Test(item.Name,item.Run);
 foreach(var item in NativeAccountChecks.Cases(root,adapters))await Test(item.Name,item.Run);
 foreach(var item in ClaudeRenewalChecks.Cases(root,adapters))await Test(item.Name,item.Run);
+foreach(var item in ClaudeProfileChecks.Cases(root,adapters))await Test(item.Name,item.Run);
+foreach(var item in ProtectedClaudeLoginChecks.Cases(root))await Test(item.Name,item.Run);
 foreach(var item in ClaudeMaintenanceCoordinatorChecks.Cases(root,adapters))await Test(item.Name,item.Run);
 foreach(var item in AccountApiChecks.Cases(root,adapters))await Test(item.Name,item.Run);
 foreach(var item in RuntimeDiagnosticsChecks.Cases())await Test(item.Name,item.Run);

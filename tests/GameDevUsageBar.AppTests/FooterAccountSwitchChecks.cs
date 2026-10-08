@@ -253,7 +253,14 @@ internal static class FooterAccountSwitchChecks
         .Where(path=>!path.EndsWith("presentation.json",StringComparison.OrdinalIgnoreCase)&&!path.EndsWith("presentation.json.bak",StringComparison.OrdinalIgnoreCase))
         .Concat(Directory.GetFiles(fixture.Home,"*",SearchOption.AllDirectories)).ToDictionary(path=>path,path=>Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))));
     private static Button Switch(CompactCardView card)=>(Button)card.FindName("SwitchAccountButton");
-    private static CompactCardView Card(TrayPopupWindow panel,string provider)=>Visuals<CompactCardView>(panel).Single(card=>card.DataContext is CardModel model&&model.Id==provider);
+    private static CompactCardView Card(TrayPopupWindow panel,string provider)
+    {
+        // These checks exercise the retained general-tray footer and guarded
+        // native switch integration. Provider-hover checks cover the separate
+        // per-account surface; selecting it must not redefine this harness.
+        panel.SelectProvider(null);panel.UpdateLayout();
+        return Visuals<CompactCardView>(panel).Single(card=>card.DataContext is CardModel model&&model.Id==provider);
+    }
     private static ContextMenu Open(CompactCardView card)
     {Assert(Switch(card).IsVisible&&Switch(card).IsEnabled,"footer switch is not usable");Click(Switch(card));return Switch(card).ContextMenu??throw new InvalidOperationException("footer did not create an account menu");}
     private static MenuItem[] Options(ContextMenu menu)=>menu.Items.OfType<MenuItem>().Where(item=>item.Tag is Guid).ToArray();

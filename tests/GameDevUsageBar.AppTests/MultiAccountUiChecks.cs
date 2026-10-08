@@ -94,9 +94,11 @@ internal static class MultiAccountUiChecks
             try
             {
                 popup.SelectProvider("codex");popup.Show();await Idle();
-                var popupPicker=Visuals<AccountPickerView>(popup).Single();Guid? selected=null;
+                var providerView=(ProviderAccountsView)popup.FindName("ProviderAccounts");Guid? selected=null;
                 popup.AccountSwitchRequested+=(_,slot)=>selected=slot;
-                menu=Open(popupPicker);await Idle();menu.Items.OfType<MenuItem>().Single(i=>i.Tag is Guid slot&&slot==codexFirst.SlotId).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));menu.IsOpen=false;
+                var row=Visuals<CompactAccountView>(providerView).Single(c=>c.DataContext is CardModel m&&m.SlotId==codexFirst.SlotId);
+                var select=(Button)row.FindName("SelectAccountButton");
+                select.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));await Idle();
                 Check(selected==codexFirst.SlotId,"tray popup did not forward rapid selection");
                 var hover=new CompactCardView{DataContext=codexModel,ShowActions=false};var holder=new Window{Content=hover,Width=440,SizeToContent=SizeToContent.Height,ShowActivated=false,ShowInTaskbar=false};
                 try{holder.Show();await Idle();Check(!Visuals<AccountPickerView>(hover).Single().IsVisible,"hover-only card contains functional account selection");}finally{holder.Close();}

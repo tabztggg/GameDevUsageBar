@@ -17,6 +17,7 @@ public partial class TrayPopupWindow : Window
     public bool AllowClose { get; set; }
     public event Action? OverviewRequested, SettingsRequested, WidgetRequested, ExitRequested, DismissRequested;
     public event Action<string>? AccountRequested;
+    public event Action<string,Guid>? AccountSlotRequested;
     public event Action<string,Guid>? AccountSwitchRequested;
     public event Action<string,Guid>? CliAccountSwitchRequested;
     public event Action<string>? ManageAccountsRequested;
@@ -25,6 +26,8 @@ public partial class TrayPopupWindow : Window
         this.hub=hub; InitializeComponent();
         AddHandler(AccountPickerView.SelectAccountEvent,new EventHandler<AccountSelectionEventArgs>((_,e)=>{e.Handled=true;AccountSwitchRequested?.Invoke(e.ProviderId,e.SlotId);}));
         AddHandler(CompactCardView.SwitchCliAccountEvent,new EventHandler<AccountSelectionEventArgs>((_,e)=>{e.Handled=true;CliAccountSwitchRequested?.Invoke(e.ProviderId,e.SlotId);}));
+        AddHandler(CompactAccountView.RefreshAccountRequestedEvent,new EventHandler<AccountSelectionEventArgs>((_,e)=>{e.Handled=true;_=hub.RequestManualRefresh(e.ProviderId,e.SlotId);}));
+        AddHandler(CompactAccountView.SetupAccountRequestedEvent,new EventHandler<AccountSelectionEventArgs>((_,e)=>{e.Handled=true;AccountSlotRequested?.Invoke(e.ProviderId,e.SlotId);}));
         AddHandler(AccountPickerView.ManageAccountsEvent,new RoutedEventHandler((_,e)=>{if(e.OriginalSource is FrameworkElement {DataContext:CardModel model}){e.Handled=true;ManageAccountsRequested?.Invoke(model.Id);}}));
         view=hub.CreateView(m=>selectedId is null ? m.EligibleForWidget : m.Id==selectedId); Cards.ItemsSource=view;
         hub.Changed+=Changed; Changed();
@@ -35,11 +38,18 @@ public partial class TrayPopupWindow : Window
         Closing+=(_,e)=> {if(!AllowClose) {e.Cancel=true;Hide();}};
         Closed+=(_,_)=>hub.Changed-=Changed;
     }
-    public void SelectProvider(string? id){selectedId=id;Changed();}
+    public void SelectProvider(string? id){var changed=selectedId!=id;selectedId=id;Changed();if(changed)ContentScroll.ScrollToTop();}
+    public string? ProviderId=>selectedId;
+    public double DesiredPopupWidth=>selectedId is null?400:500;
     private void Changed()
     {
         view.Refresh();
-        EmptyMessage.Visibility=view.IsEmpty ? Visibility.Visible : Visibility.Collapsed;
+        var providerSelected=selectedId is not null;
+        PopupHeader.Visibility=providerSelected?Visibility.Collapsed:Visibility.Visible;
+        Cards.Visibility=providerSelected?Visibility.Collapsed:Visibility.Visible;
+        ProviderAccounts.Visibility=providerSelected?Visibility.Visible:Visibility.Collapsed;
+        if(selectedId is not null)ProviderAccounts.SetProvider(hub,selectedId);
+        EmptyMessage.Visibility=!providerSelected && view.IsEmpty ? Visibility.Visible : Visibility.Collapsed;
         var count=hub.Models.Count(m=>m.Definition.HoldReason!=null);
         PendingText.Text=count>0 ? L.F("{0} sources pending verification",count) : "";
         PendingText.Visibility=count>0 ? Visibility.Visible : Visibility.Collapsed;

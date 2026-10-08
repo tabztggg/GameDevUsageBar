@@ -108,8 +108,12 @@ internal static class CompactDesignChecks
             var footer=(FrameworkElement)panel.FindName("PopupFooter");
             Assert(footer.TransformToAncestor(panel).TransformBounds(new Rect(footer.RenderSize)).Bottom<=panel.ActualHeight+1,"footer clipped below the popup");
             scroll.ScrollToBottom();await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);panel.UpdateLayout();Render(panel,Path.Combine(root,"popup-many-bottom-150.png"));
-            panel.SelectProvider("missing");panel.FitToWorkArea(400,680);panel.UpdateLayout();
-            Assert(panel.Height<250 && ((TextBlock)panel.FindName("EmptyMessage")).IsVisible,"empty state kept fixed blank space");
+            panel.SelectProvider("missing");panel.FitToWorkArea(400,680);
+            // Account containers and the deferred refit settle on the dispatcher,
+            // just as they do when the visible panel changes provider.
+            await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);panel.UpdateLayout();
+            Render(panel,Path.Combine(root,"popup-empty-150.png"));
+            Assert(panel.Height<250 && ((ProviderAccountsView)panel.FindName("ProviderAccounts")).AccountModels.Count==0,"empty state kept fixed blank space: height="+panel.Height+", accounts="+((ProviderAccountsView)panel.FindName("ProviderAccounts")).AccountModels.Count);
             Assert(before.SequenceEqual(File.ReadAllBytes(Path.Combine(host.Root,"settings.json"))) && adapters.All(a=>a.Calls==1),"presentation rewrote accounts or queried");
             Console.WriteLine("PASS compact popup bilingual, reset detail, dynamic height, overflow and empty state without queries");
         } finally {panel.AllowClose=true;panel.Close();Localizer.SetLanguage("en-US");}

@@ -1,0 +1,49 @@
+<UserControl x:Class="GameDevUsageBar.App.CompactAccountView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:loc="clr-namespace:GameDevUsageBar.App.Presentation" AutomationProperties.Name="{Binding AccessibleText}" UseLayoutRounding="True" Focusable="False">
+ <UserControl.Resources>
+  <Style x:Key="OptionalText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Setter Property="TextWrapping" Value="Wrap"/><Style.Triggers><Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed"/></Trigger></Style.Triggers></Style>
+  <Style x:Key="SmallAction" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="FontSize" Value="10"/><Setter Property="Padding" Value="7,4"/><Setter Property="Margin" Value="5,0,0,0"/></Style>
+ </UserControl.Resources>
+ <Border BorderBrush="{DynamicResource EdgeBrush}" BorderThickness="0,0,0,1" Padding="0,8,0,8">
+  <StackPanel>
+   <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+    <WrapPanel VerticalAlignment="Center">
+     <TextBlock Text="{Binding AccountLabel}" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="280" Margin="0,0,7,0"/>
+     <Border Background="{DynamicResource BackgroundBrush}" CornerRadius="3" Padding="5,1" VerticalAlignment="Center" Margin="0,0,6,0"><Border.Style><Style TargetType="Border"><Style.Triggers><DataTrigger Binding="{Binding PlanLabel}" Value=""><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></Border.Style><TextBlock Text="{Binding PlanLabel}" FontSize="10" Foreground="{DynamicResource MutedBrush}"/></Border>
+     <Border Background="{DynamicResource BackgroundBrush}" CornerRadius="3" Padding="5,1" VerticalAlignment="Center" Visibility="{Binding IsDisplayedAccount, Converter={StaticResource BoolVisibility}}"><TextBlock Text="{loc:Loc 'Displayed account'}" FontSize="10" Foreground="{DynamicResource MutedBrush}"/></Border>
+    </WrapPanel>
+    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top" Margin="10,2,0,0"><Ellipse Width="5" Height="5" Fill="{Binding CompactStatusBrush}" Margin="0,0,5,0"/><TextBlock Text="{Binding CompactBadge}" FontSize="10" Foreground="{DynamicResource MutedBrush}" MaxWidth="115" TextWrapping="Wrap"/></StackPanel>
+   </Grid>
+   <TextBlock Text="{Binding AccountSource}" FontSize="10" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" Margin="0,3,0,0"/>
+   <TextBlock Text="{Binding DemoBanner}" Style="{StaticResource OptionalText}" FontSize="10" Foreground="{DynamicResource AlertBrush}" Margin="0,5,0,0"/>
+   <TextBlock Text="{Binding CompactNotice}" Style="{StaticResource OptionalText}" FontSize="11" Foreground="{DynamicResource AlertBrush}" Margin="0,5,0,0" AutomationProperties.LiveSetting="Polite"/>
+   <TextBlock Text="{Binding CompactExplanation}" Style="{StaticResource OptionalText}" FontSize="10" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0"/>
+   <ItemsControl x:Name="AccountMetrics" ItemsSource="{Binding CompactFeaturedMetrics}" Margin="0,4,0,0"><ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ItemsControl.ItemsPanel><ItemsControl.ItemTemplate><DataTemplate>
+    <Border Padding="0,3,12,3"><StackPanel>
+     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <TextBlock Text="{Binding Label}" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+      <TextBlock Grid.Column="1" Text="{Binding OverviewDisplay}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="130" TextAlignment="Right"><TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Style.Triggers><DataTrigger Binding="{Binding IsExhausted}" Value="True"><Setter Property="Foreground" Value="{DynamicResource AlertBrush}"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
+     </Grid>
+     <TextBlock Text="{Binding ResetDisplay}" Style="{StaticResource OptionalText}" FontSize="10" Foreground="{DynamicResource MutedBrush}"/>
+     <TextBlock Text="{Binding CountdownDisplay}" Style="{StaticResource OptionalText}" FontSize="10" Foreground="{DynamicResource MutedBrush}" Margin="0,1,0,0"/>
+    </StackPanel></Border>
+   </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+   <ItemsControl x:Name="OtherMetrics" ItemsSource="{Binding CompactOtherMetrics}" Margin="0,2,0,0"><ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel><ItemsControl.ItemTemplate><DataTemplate>
+    <Border Padding="0,2,16,2" MaxWidth="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=ItemsControl}}"><StackPanel>
+     <TextBlock FontSize="11" TextWrapping="Wrap"><Run Text="{Binding Label, Mode=OneWay}" Foreground="{DynamicResource MutedBrush}"/><Run Text="  "/><Run Text="{Binding OverviewDisplay, Mode=OneWay}" FontWeight="SemiBold"/></TextBlock>
+     <TextBlock Text="{Binding ResetDisplay}" Style="{StaticResource OptionalText}" FontSize="10" Foreground="{DynamicResource MutedBrush}"/>
+     <TextBlock Text="{Binding CountdownDisplay}" Style="{StaticResource OptionalText}" FontSize="10" Foreground="{DynamicResource MutedBrush}"/>
+    </StackPanel></Border>
+   </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+   <TextBlock Text="{Binding CompactTime}" ToolTip="{Binding TimeText}" FontSize="10" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,4,0,0"/>
+   <Border Visibility="{Binding ShowActions, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolVisibility}}" Margin="0,7,0,0"><StackPanel>
+    <WrapPanel HorizontalAlignment="Right">
+     <Button x:Name="SelectAccountButton" Content="{loc:Loc 'Show this account'}" IsEnabled="{Binding CanSelectDisplayedAccount}" Click="SelectAccount_Click" Style="{StaticResource SmallAction}"/>
+     <Button x:Name="SwitchAccountButton" Content="{loc:Loc 'Switch CLI login'}" IsEnabled="{Binding CanSwitchThisCliAccount}" Visibility="{Binding SupportsCliAccountSwitch, Converter={StaticResource BoolVisibility}}" ToolTip="{loc:Loc 'Switch CLI login. Close CLI sessions first.'}" Click="SwitchAccount_Click" Style="{StaticResource SmallAction}"/>
+     <Button x:Name="RefreshButton" Content="{loc:Loc L0e91610117}" IsEnabled="{Binding CanRefresh}" Click="Refresh_Click" Style="{StaticResource SmallAction}"/>
+     <Button x:Name="SetupButton" Content="{Binding SetupLabel}" Click="Setup_Click" Style="{StaticResource SmallAction}"/>
+    </WrapPanel>
+    <TextBlock Text="{Binding AccountSwitchFeedback}" Style="{StaticResource OptionalText}" FontSize="10" Foreground="{DynamicResource MutedBrush}" Margin="0,5,0,0" AutomationProperties.LiveSetting="Polite"/>
+   </StackPanel></Border>
+  </StackPanel>
+ </Border>
+</UserControl>

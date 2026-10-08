@@ -37,3 +37,6 @@ TestResults/
 __pycache__/
 .DS_Store
 Thumbs.db
+# Machine-specific extension installation evidence and synthetic QA output
+tools/bridge-integration/install-baseline.json
+qa/

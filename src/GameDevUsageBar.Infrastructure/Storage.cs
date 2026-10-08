@@ -41,7 +41,7 @@ public static class AtomicFile
         finally { if(File.Exists(temp)) File.Delete(temp); }
     }
 }
-public sealed class SettingsStore(string root,Action<Exception>? onError=null)
+public sealed class SettingsStore(string root,Action<Exception>? onError=null,NativeOAuthStore? native=null)
 {
     private readonly string path = Path.Combine(root, "settings.json");
     public bool ReadOnly { get; private set; }
@@ -50,7 +50,8 @@ public sealed class SettingsStore(string root,Action<Exception>? onError=null)
         try
         {
             var settings = JsonSerializer.Deserialize<Settings>(await File.ReadAllTextAsync(path));
-            if(settings is null || settings.Schema is not (1 or 2 or 3 or 4) || settings.Accounts is null) throw new InvalidDataException();
+            if(settings is null || settings.Schema is not (1 or 2 or 3 or 4 or 5) || settings.Accounts is null) throw new InvalidDataException();
+            if(settings.Schema<5&&settings.Accounts.Any(c=>c.ClaudeConfigDirectory is not null))throw new InvalidDataException();
             settings.Accounts.RemoveAll(c=>ProviderSources.IsRetired(c.ProviderId));
             if(settings.Schema<4 && settings.Accounts.GroupBy(c=>c.ProviderId).Any(g=>g.Count()>1))throw new InvalidDataException();
             ValidateAccounts(settings.Accounts);
@@ -69,10 +70,10 @@ public sealed class SettingsStore(string root,Action<Exception>? onError=null)
         ValidateAccounts(saved);
         // Older builds must refuse regional settings instead of silently sending a
         // China-bound key to their hard-coded global host.
-        var schema=saved.GroupBy(a=>a.ProviderId).Any(g=>g.Count()>1)||saved.Any(a=>!a.IsActive||a.NativeAuthRef is not null||a.SourceMode=="saved-oauth")?4:3;
+        var schema=saved.Any(a=>a.ClaudeConfigDirectory is not null)?5:saved.GroupBy(a=>a.ProviderId).Any(g=>g.Count()>1)||saved.Any(a=>!a.IsActive||a.NativeAuthRef is not null||a.SourceMode=="saved-oauth")?4:3;
         return AtomicFile.WriteAsync(path, JsonSerializer.SerializeToUtf8Bytes(new Settings(schema, saved), new JsonSerializerOptions { WriteIndented = true }));
     }
-    private static void ValidateAccounts(IReadOnlyCollection<AccountConfig> accounts)
+    private void ValidateAccounts(IReadOnlyCollection<AccountConfig> accounts)
     {
         foreach(var account in accounts)account.Validate();
         if(accounts.GroupBy(a=>a.SlotId).Any(g=>g.Count()>1)
@@ -80,6 +81,10 @@ public sealed class SettingsStore(string root,Action<Exception>? onError=null)
             || accounts.Where(a=>a.CredentialRef is not null).GroupBy(a=>a.CredentialRef).Any(g=>g.Count()>1)
             || accounts.Where(a=>a.NativeAuthRef is not null).GroupBy(a=>a.NativeAuthRef).Any(g=>g.Count()>1))
             throw new InvalidDataException("Ambiguous account configuration.");
+        var profiles=accounts.Where(a=>a.ProviderId=="claude"&&a.SourceMode=="local-oauth")
+            .Select(a=>Path.GetFullPath((native??new NativeOAuthStore()).PathFor(a)));
+        if(profiles.GroupBy(path=>path,StringComparer.OrdinalIgnoreCase).Any(g=>g.Count()>1))
+            throw new InvalidDataException("A Claude configuration directory is already bound to another account.");
     }
     private sealed record Settings(int Schema, List<AccountConfig> Accounts);
 }

@@ -4,9 +4,9 @@
 
 **Your AI quotas, credits, and balances. One quiet Windows bar.**
 
-Windows 10/11 · x64 · English / 简体中文 · v0.9.5 preview
+Windows 10/11 · x64 · English / 简体中文 · v0.9.8 preview
 
-[Download](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.5) · [Installation](docs/installation.md) · [中文](README.zh-CN.md) · [Quota API](QUOTA-API.md) · [Release notes](docs/releases/v0.9.5.md)
+[Download](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.8) · [Installation](docs/installation.md) · [中文](README.zh-CN.md) · [Quota API](QUOTA-API.md) · [Release notes](docs/releases/v0.9.8.md)
 
 </div>
 
@@ -18,15 +18,16 @@ Keep Claude and Codex quota windows, Tripo and GRSAI credits, API balances, and 
 
 ## Get started
 
-Download the Windows x64 package from [Releases](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.5):
+Download the Windows x64 package from [Releases](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.8):
 
 | Package | Best for |
 | --- | --- |
-| `GameDevUsageBar-0.9.5-win-x64-setup.exe` | A fixed installation with Start menu shortcuts and optional logon startup |
-| `GameDevUsageBar-0.9.5-win-x64.zip` | Extracting and running without an installer |
+| `GameDevUsageBar-0.9.8-win-x64-setup.exe` | A fixed installation with Start menu shortcuts and optional logon startup |
+| `GameDevUsageBar-0.9.8-win-x64.zip` | Extracting and running without an installer |
+| `package-manifest.json` | Package version, source commit, asset sizes, and hashes |
 | `SHA256SUMS.txt` | Checking download integrity |
 
-The runtime is included. **No .NET, Node.js, Git, or developer tools are required to run the app.** Keep the complete portable folder together.
+The runtime is included. **No separate .NET runtime or developer tools are required to launch the app.** Keep the complete portable folder together. Native CLI and browser integrations require their corresponding software; the Claude Add account workflow also requires a separately maintained protected Bridge.
 
 Open GameDevUsageBar, choose a service's **Settings**, configure its credential source, enable it, and save. New sources are disabled until configured. See [installation](docs/installation.md) for startup, upgrades, removal, and troubleshooting.
 
@@ -37,7 +38,7 @@ Open GameDevUsageBar, choose a service's **Settings**, configure its credential 
 - **One desktop row.** A 36-DIP strip with small icons, remaining percentages, native credit/currency units, and download/upload speed in decimal MB/s.
 - **Two featured modules you choose.** Put any supported service in either large overview module; keep the others in compact, expandable rows.
 - **Clear reset details.** Five-hour windows show hours and minutes; longer windows show days, hours, and minutes. Reported reset tickets show count and expiry in one row.
-- **Matching hover and click details.** Both expose quota windows, reset dates/countdowns, and status; click panels add actions.
+- **All accounts for the provider you hover.** Each provider keeps one bar entry. Its panel lists every saved account with separate quotas, resets, balances, ticket expiry, and status; longer lists scroll. Click opens the same information with per-account actions.
 - **Position and transparency controls.** Drag the grip, pin the bar above other windows, lock its position, or adjust background transparency without fading the text.
 - **English and Simplified Chinese.** Switch immediately; custom account labels remain unchanged.
 
@@ -45,11 +46,11 @@ Percentages mean **remaining quota**, not consumed usage. Missing fields stay un
 
 ### Hover for details, click for actions
 
-Hover shows the quota windows, reset countdowns, and freshness. Click opens the same information with account switching, Refresh, and Settings actions.
+Hover any service to compare its saved accounts in one compact panel. Five-hour and weekly quotas sit side by side when returned; balances and ticket expiry remain below them. Move into the panel to scroll a longer list. Click the service for the same account information plus **Show this account**, **Switch CLI login** where supported, **Refresh**, and **Settings**.
 
 | Hover card | Clicked provider popup |
 | --- | --- |
-| ![Quota detail hover card](docs/screenshots/hover-en-US.png) | ![Provider popup with account switch action](docs/screenshots/provider-popup-en-US.png) |
+| ![Quota detail hover card](docs/screenshots/hover-en-US.png) | ![Provider popup with actions for each account](docs/screenshots/provider-popup-en-US.png) |
 
 ## Supported services
 
@@ -71,17 +72,17 @@ Tripo API credits exclude Studio credits. Gemini AI Studio request counts are **
 
 ## Multiple accounts, quick selection
 
-Use the arrow beside a service title or **tray menu → Accounts → service**. **Manage accounts** provides independent usage, credentials, endpoints, refresh state, and display selection for every account.
+Hover a service on the floating bar to see **all of that service's saved accounts**, rather than every service's accounts together. The account count is dynamic and long lists scroll. Click for actions beside each account, or use **Manage accounts** and **tray menu → Accounts → service**.
 
 ![Independent Codex accounts](docs/screenshots/accounts-en-US.png)
 
-Selecting a displayed account changes the bar and overview; it does not change a CLI login. Enabled accounts poll independently, so adding accounts adds usage-query traffic.
+**Show this account** changes the bar and overview only. The **Displayed account** badge identifies that display selection; it does not claim that a CLI or existing desktop session changed. Each enabled account has independent credentials, endpoint, query state, and quota snapshots. More enabled accounts produce more usage-query traffic.
 
-For Codex and Claude, sign into each account yourself and use **Save current CLI login** to capture auth data in a Windows-user encrypted vault. **Switch CLI login** is separate: close CLI sessions first; the app stores encrypted recovery data, replaces only the supported auth file/field, and verifies it. It respects `CODEX_HOME` and `CLAUDE_CONFIG_DIR`, preserves unrelated Claude fields, and leaves existing desktop sessions alone. It does not launch or sign into a CLI.
+For Codex and captured Claude logins, sign into each account yourself and choose **Save current CLI login** to store its auth data in a Windows-user encrypted vault. **Switch CLI login** is a separate, explicit action for a supported saved login: close CLI sessions first; the app saves encrypted recovery data, replaces only the supported auth file/field, and verifies the result. It respects `CODEX_HOME` and `CLAUDE_CONFIG_DIR`, preserves unrelated Claude fields, and does not replace an existing desktop session. BUSY, read-only, and unresolved results are reported without automatically replaying an auth write.
 
-The provider popup also has a **Switch account** button next to Refresh and Settings. For Codex and Claude, it restores the selected saved CLI login and selects that account for display after verification. The header dropdown changes the displayed account only. For API providers, the footer button selects the displayed API account. Switching reports BUSY, read-only and unresolved results without automatically retrying an auth write.
+**Add Claude account** in Manage accounts takes a display name and creates a separate configuration directory. It opens an attended subscription login through the protected Claude Code Bridge installed separately on this machine. Each authorization uses a fresh, independent Firefox profile without importing another profile's cookies, history, cache, passwords, or session. Complete authorization yourself; the app binds and refreshes only that account slot after a confirmed successful process exit. Renaming does not move its directory. Confirmed failures leave a pending account for explicit retry; unknown attempts remain blocked. The release tests verify isolation and the offline launch contract, not a real attended sign-in. [Authentication details](docs/installation.md#accounts-and-authentication)
 
-Version 0.9.1 renews the **explicitly connected current Claude local OAuth login** before token expiry while the app runs. Native refresh locks and recoverable confirmed responses guard rotation. Saved account snapshots and manual tokens are not automatically renewed. Revoked/expired refresh grants require signing in again; uncertain rotations are not automatically replayed. This follows Claude Code's implementation and may change. [Authentication details](docs/installation.md#accounts-and-authentication)
+While the app runs, enabled, explicitly bound Claude **local OAuth** profiles renew before token expiry through the existing renewal owner. Native locks and the exact configuration directory protect each account. Saved snapshots and manual tokens are not automatically renewed. Revoked/expired grants need a new sign-in; uncertain rotations are not automatically replayed. Isolated Claude profiles use configuration schema 5 and need v0.9.6 or later; do not downgrade a configuration to force an older build to read it.
 
 ## Local quota API
 
@@ -105,7 +106,7 @@ Settings, caches, encrypted credentials, and presentation preferences live in `%
 
 Unreadable settings are preserved in read-only mode rather than overwritten with defaults. Fix or restore the original file before saving account changes; CLI switching also rejects known read-only account settings before changing auth files.
 
-Usage queries do not generate content or redeem tickets. Current Claude renewal and explicit CLI switching are the scoped auth-writing operations above. Provider requests retain TLS verification, response limits, disabled redirects, and account/source cache isolation. Display and language changes do not query providers.
+Usage queries do not generate content or redeem tickets. Explicit attended Claude login, bound local-OAuth renewal, and CLI switching are the scoped auth-writing operations above. Provider requests retain TLS verification, response limits, disabled redirects, and account/source cache isolation. Display and language changes do not query providers.
 
 Downloads are unsigned. SHA256 verifies integrity, not antivirus clearance. Do not disable security software to install the app. [Installation and removal](docs/installation.md)
 

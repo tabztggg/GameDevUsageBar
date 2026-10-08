@@ -27,16 +27,10 @@ jobs:
           "GAMEDEVUSAGEBAR_QA_ROOT=$qa" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Locked restore, build, behavior checks and publish
         shell: pwsh
-        run: ./tools/build.ps1 -Publish -DotnetPath (Get-Command dotnet).Source
-      - name: Account, native-auth and synthetic UI integration
+        run: ./tools/build.ps1 -Publish -UiChecks -DotnetPath (Get-Command dotnet).Source
+      - name: Bilingual overview and compact surface integration
         shell: pwsh
         run: |
-          dotnet run --project tests/GameDevUsageBar.AppTests -c Release --no-build -- --footer-account-switch
-          if($LASTEXITCODE -ne 0){throw 'Footer account-switch integration failed.'}
-          dotnet run --project tests/GameDevUsageBar.AppTests -c Release --no-build -- --popup-positioning
-          if($LASTEXITCODE -ne 0){throw 'Popup positioning integration failed.'}
-          dotnet run --project tests/GameDevUsageBar.AppTests -c Release --no-build -- --multi-account
-          if($LASTEXITCODE -ne 0){throw 'Account integration failed.'}
           dotnet run --project tests/GameDevUsageBar.AppTests -c Release --no-build -- --overview-design
           if($LASTEXITCODE -ne 0){throw 'Overview integration failed.'}
           dotnet run --project tests/GameDevUsageBar.AppTests -c Release --no-build -- --compact-design

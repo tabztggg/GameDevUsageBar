@@ -2,23 +2,24 @@
 
 [Home](../README.md) · [中文](installation.zh-CN.md)
 
-GameDevUsageBar v0.9.5 packages target **Windows 10/11 x64**. They include the .NET runtime; no separate .NET, Node.js, Git, npm, or SDK installation is needed. There is no native macOS, Linux, or ARM64 package.
+GameDevUsageBar v0.9.8 packages target **Windows 10/11 x64**. They include the .NET runtime; no separate runtime or developer tools are needed to launch the app. Native CLI/browser integrations require their corresponding software. The protected Claude Code Bridge is a separate prerequisite for Add Claude account. There is no native macOS, Linux, or ARM64 package.
 
 ## Choose a package
 
-Download from the [public GitHub release](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.5). Public release assets can be downloaded without signing into GitHub. [GitHub's public-asset access rules](https://docs.github.com/en/rest/releases/assets#get-a-release-asset)
+Download from the [public GitHub release](https://github.com/tabztggg/GameDevUsageBar/releases/tag/v0.9.8). Public release assets can be downloaded without signing into GitHub. [GitHub's public-asset access rules](https://docs.github.com/en/rest/releases/assets#get-a-release-asset)
 
 | File | Purpose |
 | --- | --- |
-| `GameDevUsageBar-0.9.5-win-x64-setup.exe` | Current-user installation with English/Chinese setup UI |
-| `GameDevUsageBar-0.9.5-win-x64.zip` | Portable folder; extract and open `GameDevUsageBar.exe` |
+| `GameDevUsageBar-0.9.8-win-x64-setup.exe` | Current-user installation with English/Chinese setup UI |
+| `GameDevUsageBar-0.9.8-win-x64.zip` | Portable folder; extract and open `GameDevUsageBar.exe` |
+| `package-manifest.json` | Version, source commit, asset sizes, and SHA256 hashes |
 | `SHA256SUMS.txt` | Release-asset SHA256 hashes |
 
 The downloads are unsigned. Verify their source and hashes; do not turn off security software. If a scanner blocks a file, retain its detection details for investigation. A matching hash verifies integrity, not antivirus clearance.
 
 ```powershell
-Get-FileHash -Algorithm SHA256 .\GameDevUsageBar-0.9.5-win-x64-setup.exe
-Get-FileHash -Algorithm SHA256 .\GameDevUsageBar-0.9.5-win-x64.zip
+Get-FileHash -Algorithm SHA256 .\GameDevUsageBar-0.9.8-win-x64-setup.exe
+Get-FileHash -Algorithm SHA256 .\GameDevUsageBar-0.9.8-win-x64.zip
 ```
 
 Compare the hashes with the matching filenames in the release's `SHA256SUMS.txt`.
@@ -35,7 +36,7 @@ Setup always creates a Start menu entry. **Start at Windows logon** is selected 
 
 Open **GameDevUsageBar** from the Start menu or the selected shortcut. Left-click its notification-area icon for the compact usage panel; right-click for overview, accounts, refresh, display settings, widget, and Exit. Closing the overview leaves the tray running. **Exit** stops the app.
 
-For deployment from Codex or another managed command runner, launch through Windows Explorer rather than directly with `Start-Process`. Child processes can inherit the runner's Windows Job and end when that runner is closed. The source helper `tools/start-installed.ps1` uses an existing Explorer folder view, checks the new process's Explorer parent, and refuses a command-process fallback. It requires an open File Explorer window; the Start menu and Windows logon shortcut are the normal desktop launch paths. Job membership alone does not identify the Job owner. See [Microsoft's Job Objects documentation](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects).
+For deployment from Codex or another managed command runner, launch through Windows Explorer rather than directly with `Start-Process`. Child processes can inherit the runner's Windows Job and end when that runner is closed. The source helper `tools/start-installed.ps1` uses an existing Explorer folder view or its registered desktop view, checks the new process's Explorer parent, and refuses a command-process fallback. An open File Explorer window is optional; the Start menu and Windows logon shortcut are the normal desktop launch paths. Job membership alone does not identify the Job owner. See [Microsoft's Explorer launch guidance](https://devblogs.microsoft.com/oldnewthing/20131118-00/?p=2643) and [Job Objects documentation](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects).
 
 Choose **Desktop widget** for the single-row bar. Drag the left grip, use the pin button for topmost, and use **…** for lock and transparency. Choose your language and featured services in Display settings.
 
@@ -45,23 +46,25 @@ For the portable ZIP, extract all files into a stable folder. Do not run the exe
 
 Configure each service from its **Settings** action. API providers require the appropriate API key; Claude/Codex subscription OAuth is separate from inference API keys. Tripo and GRSAI offer explicit Global/China choices and never silently fall back to another region.
 
-The local CLI option explicitly connects an existing login. The app does not install, launch, or sign into a CLI. Claude Cookie import is initiated by you and supports Firefox profiles; it does not fall back to another browser or auth source.
+The local CLI option explicitly connects an existing login. Claude Cookie import is initiated by you and supports Firefox profiles; it does not fall back to another browser or auth source.
+
+**Manage accounts → Claude → Add Claude account** takes a required display name and creates an isolated `CLAUDE_CONFIG_DIR`. It starts the maintained Bridge's attended subscription login with its protected proxy and Firefox checks. A fresh Firefox profile and separate instance are created for each authorization, without importing cookies, history or cache. Choose the intended subscription account in Firefox and paste its full code into the terminal if requested. After the contained native process closes successfully, the app reads and binds only this profile and refreshes its quota. Other logins are preserved. **Edit account** renames the display label without moving the profile; **Sign in to this account** retries a confirmed failed attempt. UNKNOWN attempts block repeated sign-in. **Read account login** cannot settle an earlier unknown attempt. This path requires a compatible protected Claude Code Bridge installed separately on the same machine; it is not a standalone sign-in client supplied by the installer. It never runs on a timer or during installation. Offline tests cover profile isolation and the launch contract; an actual attended authorization is not part of the release validation.
 
 For multiple Codex/Claude logins:
 
 1. Sign into the desired account yourself in its CLI.
 2. Open **Manage accounts**, create/name a slot, and choose **Save current CLI login**.
 3. Repeat for the other accounts.
-4. Select the displayed account with the title arrow or tray account menu.
-5. To change the actual CLI auth file, close CLI sessions and explicitly choose **Switch CLI login** in Manage accounts, or **Switch account** in the clicked provider popup.
+4. Hover the service to compare all its saved accounts; click and choose **Show this account**, or use the tray account menu, to change the bar/overview selection.
+5. To change the actual CLI auth file, close CLI sessions and explicitly choose **Switch CLI login** in Manage accounts, or **Switch CLI login** for the specific account in the clicked provider popup.
 
-For Codex and Claude, the popup footer uses the chosen saved CLI login, verifies the auth-file replacement, and then selects it for display. The title dropdown remains display-only. For API services, the footer changes only the displayed API account; it does not switch native CLI auth. BUSY, read-only, and unresolved results are shown without automatically retrying an auth write. Known read-only account settings are rejected before native auth is changed.
+The clicked provider panel lists actions for each saved account. **Show this account** changes display selection only; the **Displayed account** badge has the same meaning. For a supported saved Codex/Claude login, **Switch CLI login** verifies the auth-file replacement before selecting it for display. API accounts expose display selection, Refresh, and Settings, without a native CLI-switch action. BUSY, read-only, and unresolved results are shown without automatically retrying an auth write. Known read-only account settings are rejected before native auth is changed.
 
 Captured auth documents are protected with Windows current-user DPAPI. Switching creates encrypted recovery data and replaces only Codex `auth.json` or the Claude `claudeAiOauth` credential field. `CODEX_HOME` and `CLAUDE_CONFIG_DIR` are respected. Other Claude fields and existing desktop sessions remain intact. Deleting an app account does not delete or log out the native CLI.
 
-Only the enabled, explicitly connected **current Claude local-oauth** source renews automatically before access-token expiry while GameDevUsageBar runs. It respects native locks and atomically publishes verified credentials. Saved snapshots and manual tokens are not renewed automatically; sign in again and recapture them after expiry. An invalid refresh grant needs a new login. An unknown rotation result is reported and is not automatically replayed. Restarting the app can recover a confirmed saved response locally; it is not a reason to resend an uncertain refresh.
+Enabled, explicitly bound **Claude local-oauth** profiles renew automatically before access-token expiry while GameDevUsageBar runs, through the same existing renewal owner. Native locks and the exact credential directory protect each account; attended login pauses renewal through its new binding. Saved snapshots and manual tokens are not renewed automatically; sign in again and recapture them after expiry. An invalid refresh grant needs a new login. An unknown rotation result is reported and is not automatically replayed. Restarting the app can recover a confirmed saved response locally; it is not a reason to resend an uncertain refresh.
 
-Account configuration that saves multiple/captured accounts uses schema 4. Use v0.9.0 or later after saving that format. Older builds may reject it; do not downgrade to force a read.
+Multiple/captured accounts use schema 4; isolated Claude profiles use schema 5 and require v0.9.6 or later. Older builds reject unsupported configuration instead of silently reading another login directory. Do not downgrade to force a read.
 
 ## Network and service errors
 

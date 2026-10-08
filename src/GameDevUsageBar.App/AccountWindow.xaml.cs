@@ -138,7 +138,7 @@ public partial class AccountWindow : Window
     {
         if(!int.TryParse(Interval.Text,out var minutes) || minutes is <5 or >120) {SetFeedback("Enter an interval between 5 and 120 minutes.");return;}
         var key=SecretInput.Password.Trim();
-        var next=config with {TripoRegion=definition.Id=="tripo"?SelectedRegion:config.TripoRegion,QueryRegion=definition.Id is "grsai"?SelectedRegion:config.QueryRegion,SourceMode=SelectedSource,ProjectId=ProjectInput.Text.Trim(),OrganizationId=OrganizationInput.Text.Trim(),AccountId=AccountIdInput.Text.Trim(),Enabled=Enabled.IsChecked==true};
+        var next=config with {TripoRegion=definition.Id=="tripo"?SelectedRegion:config.TripoRegion,QueryRegion=definition.Id is "grsai"?SelectedRegion:config.QueryRegion,SourceMode=SelectedSource,ClaudeConfigDirectory=SelectedSource=="local-oauth"?config.ClaudeConfigDirectory:null,ProjectId=ProjectInput.Text.Trim(),OrganizationId=OrganizationInput.Text.Trim(),AccountId=AccountIdInput.Text.Trim(),Enabled=Enabled.IsChecked==true};
         try{next.Validate();}catch{SetFeedback("Check the project ID, organization UUID and account ID format.");return;}
         if(Enabled.IsChecked==true && definition.Id=="gemini" && next.ProjectId.Length==0){SetFeedback("Enter the Google Cloud project ID before enabling this source.");return;}
         if(Enabled.IsChecked==true && definition.Id=="claude" && next.SourceMode=="web-cookie" && !Guid.TryParse(next.OrganizationId,out _)){SetFeedback("Enter the organization UUID from your Claude usage page.");return;}

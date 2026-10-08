@@ -18,6 +18,7 @@ public sealed class NativeClaudeRenewal : IDisposable
     private readonly NativeOAuthStore native;
     private readonly Func<AccountConfig,AccountConfig,Task<AccountConfig>> bind;
     private readonly Func<bool> busy;
+    private readonly Func<AccountConfig,bool> currentBinding;
     private readonly TimeProvider clock;
     private readonly Action<Exception>? onError;
     private readonly HttpClient http;
@@ -25,22 +26,33 @@ public sealed class NativeClaudeRenewal : IDisposable
     private readonly object sync=new();
     private readonly Dictionary<Guid,(string Stamp,AuthMaintenance View)> states=[];
     private DateTimeOffset? profileNotBefore;
-    private sealed record Journal(int Schema,Guid Slot,string NativeIdentity,string BaselineHash,string RefreshHash,string Phase,byte[]? Desired,string? NewIdentity,string? AccountUuid,string? OrganizationUuid,DateTimeOffset? ProfileNotBefore=null);
+    private sealed record Journal(int Schema,Guid Slot,string NativeIdentity,string BaselineHash,string RefreshHash,string Phase,byte[]? Desired,string? NewIdentity,string? AccountUuid,string? OrganizationUuid,DateTimeOffset? ProfileNotBefore=null,string? CredentialPath=null);
     public NativeClaudeRenewal(string root,NativeOAuthStore native,Func<AccountConfig,AccountConfig,Task<AccountConfig>> binding,
-        HttpMessageHandler? fixtureHandler=null,TimeProvider? time=null,Func<bool>? busyGuard=null,Action<Exception>? onError=null)
+        HttpMessageHandler? fixtureHandler=null,TimeProvider? time=null,Func<bool>? busyGuard=null,Action<Exception>? onError=null,Func<AccountConfig,bool>? currentBindingGuard=null)
     {
         this.root=Path.Combine(root,"auth-renewal");this.native=native;bind=binding;clock=time??TimeProvider.System;busy=busyGuard??(()=>NativeLoginSwitcher.HasRunningCli("claude"));this.onError=onError;
+        currentBinding=currentBindingGuard??(_=>true);
         http=new(fixtureHandler??CreateSystemProxyHandler()){Timeout=Timeout.InfiniteTimeSpan};
     }
     // Leaving Proxy unset uses HttpClient.DefaultProxy: process proxy settings,
     // then the current Windows user's proxy. Never force a developer's LAN hop.
     // An uncertain OAuth POST still uses the durable journal, without fallback.
     public static SocketsHttpHandler CreateSystemProxyHandler()=>new(){UseProxy=true,AllowAutoRedirect=false,UseCookies=false,AutomaticDecompression=DecompressionMethods.None};
+    public async Task<IDisposable> PauseAsync(CancellationToken ct=default)
+    {
+        await flight.WaitAsync(ct);return new PauseLease(flight);
+    }
+    private sealed class PauseLease(SemaphoreSlim gate):IDisposable
+    {
+        private SemaphoreSlim? held=gate;
+        public void Dispose()=>Interlocked.Exchange(ref held,null)?.Release();
+    }
     private static bool Eligible(AccountConfig c)=>c.ProviderId=="claude"&&c.SourceMode=="local-oauth"&&c.Enabled&&c.NativeIdentity is not null;
     private string PathFor(AccountConfig c)=>Path.Combine(root,c.SlotId.ToString("N")+".bin");
-    private string Stamp()
+    private string CredentialPath(AccountConfig c)=>Path.GetFullPath(native.PathFor(c));
+    private string Stamp(AccountConfig c)
     {
-        try{var f=new FileInfo(native.PathFor("claude"));return f.Exists?f.Length+":"+f.LastWriteTimeUtc.Ticks:"missing";}catch{return "unreadable";}
+        try{var path=CredentialPath(c);var f=new FileInfo(path);return path.ToUpperInvariant()+"|"+(f.Exists?f.Length+":"+f.LastWriteTimeUtc.Ticks:"missing");}catch{return "unreadable";}
     }
     public AuthMaintenance? Observe(AccountConfig c)
     {if(!Eligible(c))return null;lock(sync)return states.GetValueOrDefault(c.SlotId).View;}
@@ -50,11 +62,11 @@ public sealed class NativeClaudeRenewal : IDisposable
         lock(sync)
         {
             if(!states.TryGetValue(c.SlotId,out var s))return false;
-            return Stamp()!=s.Stamp||(s.View.NextAttemptAt is {} at&&at<=clock.GetUtcNow());
+            return Stamp(c)!=s.Stamp||(s.View.NextAttemptAt is {} at&&at<=clock.GetUtcNow());
         }
     }
     private void State(AccountConfig c,string state,DateTimeOffset? next=null)
-    {lock(sync)states[c.SlotId]=(Stamp(),new("GameDevUsageBar",true,state,next));}
+    {lock(sync)states[c.SlotId]=(Stamp(c),new("GameDevUsageBar",true,state,next));}
     private static string Hash(byte[] bytes)=>Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
     private static string Hash(string text)=>Hash(System.Text.Encoding.UTF8.GetBytes(text));
     private static string Text(JsonObject node,string key)=>node[key]?.GetValue<string>()??"";
@@ -66,7 +78,16 @@ public sealed class NativeClaudeRenewal : IDisposable
         {
             if(new FileInfo(path).Length>262144)throw new QueryException(FailureKind.AuthRenewalUnknown);
             plain=DpapiSecretStore.Unprotect(File.ReadAllBytes(path));var j=JsonSerializer.Deserialize<Journal>(plain);
-            if(j is null||j.Schema!=1||j.Slot!=c.SlotId||j.Phase is not ("posting" or "response" or "complete" or "rejected"))throw new QueryException(FailureKind.AuthRenewalUnknown);
+            if(j is null||j.Schema is not (1 or 2)||j.Slot!=c.SlotId||j.Phase is not ("posting" or "response" or "complete" or "rejected"))throw new QueryException(FailureKind.AuthRenewalUnknown);
+            var selected=CredentialPath(c);
+            if(j.Schema==1)
+            {
+                // Historical pending records did not bind a native path. Never
+                // recover their POST/response into a possibly changed login.
+                if(c.ClaudeConfigDirectory is not null||j.Phase is "posting" or "response"||!Matches(c,j.BaselineHash))throw new QueryException(FailureKind.AuthRenewalUnknown);
+                return j with {Schema=2,CredentialPath=selected};
+            }
+            if(j.CredentialPath is null||!string.Equals(j.CredentialPath,selected,StringComparison.OrdinalIgnoreCase))throw new QueryException(FailureKind.IdentityChanged);
             return j;
         }
         catch(QueryException){throw;}catch(Exception error){ErrorObserver.Report(onError,error);throw new QueryException(FailureKind.AuthRenewalUnknown);}
@@ -74,6 +95,7 @@ public sealed class NativeClaudeRenewal : IDisposable
     }
     private async Task SaveJournal(AccountConfig c,Journal j)
     {
+        if(j.Schema!=2||!string.Equals(j.CredentialPath,CredentialPath(c),StringComparison.OrdinalIgnoreCase))throw new QueryException(FailureKind.IdentityChanged);
         var plain=JsonSerializer.SerializeToUtf8Bytes(j with {ProfileNotBefore=profileNotBefore});byte[]? encrypted=null;
         try{encrypted=DpapiSecretStore.Protect(plain);await AtomicFile.WriteAsync(PathFor(c),encrypted);}
         finally{CryptographicOperations.ZeroMemory(plain);if(encrypted is not null)CryptographicOperations.ZeroMemory(encrypted);}
@@ -86,10 +108,11 @@ public sealed class NativeClaudeRenewal : IDisposable
         await flight.WaitAsync(ct);byte[]? document=null;Journal? journal=null;
         try
         {
-            document=native.ReadDocument("claude");var credential=native.ParseDocument("claude",document);
+            journal=ReadJournal(approved);profileNotBefore=journal?.ProfileNotBefore;
+            document=native.ForAccount(approved).ReadDocument("claude");var credential=native.ParseDocument("claude",document);
             if(credential.Identity!=approved.NativeIdentity)throw new QueryException(FailureKind.IdentityChanged);
             var oauth=(JsonNode.Parse(document) as JsonObject)?["claudeAiOauth"] as JsonObject??throw new QueryException(FailureKind.CredentialUnreadable);
-            var refreshHash=Hash(Text(oauth,"refreshToken"));journal=ReadJournal(approved);
+            var refreshHash=Hash(Text(oauth,"refreshToken"));
             if(journal is null)return;
             if(journal is {Phase:"response",Desired:not null,NewIdentity:not null}&&approved.NativeIdentity==journal.NewIdentity)
             {
@@ -100,11 +123,11 @@ public sealed class NativeClaudeRenewal : IDisposable
             // A source-save is not permission to retry an uncertain rotation of
             // the same grant, even if a different access token changes its hash.
             if(refreshHash==journal.RefreshHash)throw new QueryException(FailureKind.AuthRenewalUnknown);
-            if(!Matches(Hash(document)))throw new QueryException(FailureKind.AuthRenewalBusy);
+            if(!Matches(approved,Hash(document)))throw new QueryException(FailureKind.AuthRenewalBusy);
             var encrypted=File.ReadAllBytes(PathFor(approved));
             try{await AtomicFile.WriteAsync(PathFor(approved)+".history-"+Guid.NewGuid().ToString("N")+".bin",encrypted);}
             finally{CryptographicOperations.ZeroMemory(encrypted);}
-            await SaveJournal(approved,new(1,approved.SlotId,approved.NativeIdentity!,Hash(document),refreshHash,"complete",null,approved.NativeIdentity,null,null));
+            await SaveJournal(approved,new(2,approved.SlotId,approved.NativeIdentity!,Hash(document),refreshHash,"complete",null,approved.NativeIdentity,null,null,CredentialPath:CredentialPath(approved)));
             State(approved,"scheduled",clock.GetUtcNow());
         }
         finally{if(document is not null)CryptographicOperations.ZeroMemory(document);if(journal?.Desired is {} desired)CryptographicOperations.ZeroMemory(desired);flight.Release();}
@@ -115,9 +138,10 @@ public sealed class NativeClaudeRenewal : IDisposable
         await flight.WaitAsync(ct);byte[]? document=null;Journal? journal=null;
         try
         {
-            journal=ReadJournal(config);
-            if(journal?.ProfileNotBefore>profileNotBefore||profileNotBefore is null)profileNotBefore=journal?.ProfileNotBefore;
-            document=native.ReadDocument("claude");
+            if(!currentBinding(config))throw new QueryException(FailureKind.IdentityChanged);
+            profileNotBefore=null;journal=ReadJournal(config);
+            profileNotBefore=journal?.ProfileNotBefore;
+            document=native.ForAccount(config).ReadDocument("claude");
             var credential=native.ParseDocument("claude",document,false);
             var node=(JsonNode.Parse(document) as JsonObject)?["claudeAiOauth"] as JsonObject??throw new QueryException(FailureKind.CredentialUnreadable);
             var expiry=Date(node,"expiresAt")??throw new QueryException(FailureKind.CredentialUnreadable);
@@ -129,16 +153,16 @@ public sealed class NativeClaudeRenewal : IDisposable
                 // live profile matching a previously trusted UUID can bridge it.
                 if(journal?.AccountUuid is null||journal.OrganizationUuid is null||expiry<=clock.GetUtcNow())throw new QueryException(FailureKind.IdentityChanged);
                 if(busy())throw new QueryException(FailureKind.AuthRenewalBusy);
-                await using var identityLease=NativeRefreshLocks.TryAcquire(Path.GetDirectoryName(native.PathFor("claude"))!,root);
+                await using var identityLease=NativeRefreshLocks.TryAcquire(Path.GetDirectoryName(CredentialPath(config))!,root);
                 if(identityLease is null||!identityLease.Verify())throw new QueryException(FailureKind.AuthRenewalBusy);
                 var baseline=Hash(document);var profile=await ProfileAsync(credential.Token,ct,identityLease.Compromised);
-                if(profile.Account!=journal.AccountUuid||profile.Organization!=journal.OrganizationUuid||!Matches(baseline)||!identityLease.Verify())throw new QueryException(FailureKind.IdentityChanged);
+                if(profile.Account!=journal.AccountUuid||profile.Organization!=journal.OrganizationUuid||!Matches(config,baseline)||!identityLease.Verify())throw new QueryException(FailureKind.IdentityChanged);
                 var oldRefreshHash=Hash(Text(node,"refreshToken"));
                 if(journal.Phase=="posting"&&oldRefreshHash==journal.RefreshHash)throw new QueryException(FailureKind.AuthRenewalUnknown);
                 // An external verified new pair ends uncertainty about using the
                 // current pair; preserve the old encrypted pending record first.
                 if(journal.Phase=="posting")await AtomicFile.WriteAsync(PathFor(config)+".unknown-history",File.ReadAllBytes(PathFor(config)));
-                journal=new(1,config.SlotId,config.NativeIdentity!,baseline,oldRefreshHash,"response",document.ToArray(),credential.Identity,profile.Account,profile.Organization);
+                journal=new(2,config.SlotId,config.NativeIdentity!,baseline,oldRefreshHash,"response",document.ToArray(),credential.Identity,profile.Account,profile.Organization,CredentialPath:CredentialPath(config));
                 // Persist verified continuity before advancing settings. A crash
                 // after binding still has a recoverable local transition.
                 await SaveJournal(config,journal);
@@ -154,11 +178,11 @@ public sealed class NativeClaudeRenewal : IDisposable
                 if(journal?.AccountUuid is null)
                 {
                     if(busy())throw new QueryException(FailureKind.AuthRenewalBusy);
-                    await using var seed=NativeRefreshLocks.TryAcquire(Path.GetDirectoryName(native.PathFor("claude"))!,root);
-                    if(seed is null||!seed.Verify()||!Matches(Hash(document)))throw new QueryException(FailureKind.AuthRenewalBusy);
+                    await using var seed=NativeRefreshLocks.TryAcquire(Path.GetDirectoryName(CredentialPath(config))!,root);
+                    if(seed is null||!seed.Verify()||!Matches(config,Hash(document)))throw new QueryException(FailureKind.AuthRenewalBusy);
                     var profile=await ProfileAsync(credential.Token,ct,seed.Compromised);
-                    if(!seed.Verify()||!Matches(Hash(document)))throw new QueryException(FailureKind.AuthRenewalBusy);
-                    journal=new(1,config.SlotId,config.NativeIdentity!,Hash(document),Hash(Text(node,"refreshToken")),"complete",null,config.NativeIdentity,profile.Account,profile.Organization);
+                    if(!seed.Verify()||!Matches(config,Hash(document)))throw new QueryException(FailureKind.AuthRenewalBusy);
+                    journal=new(2,config.SlotId,config.NativeIdentity!,Hash(document),Hash(Text(node,"refreshToken")),"complete",null,config.NativeIdentity,profile.Account,profile.Organization,CredentialPath:CredentialPath(config));
                     await SaveJournal(config,journal);
                 }
                 State(config,"ready",due);return config;
@@ -167,22 +191,23 @@ public sealed class NativeClaudeRenewal : IDisposable
             if(refresh.Length==0||refresh.Length>8192||refresh.Any(char.IsControl)||Date(node,"refreshTokenExpiresAt") is {} refreshExpiry&&refreshExpiry<=now)throw new QueryException(FailureKind.AuthRenewalRequired);
             if(credential.Identity!=config.NativeIdentity)throw new QueryException(FailureKind.IdentityChanged);
             if(busy())throw new QueryException(FailureKind.AuthRenewalBusy);
-            await using var lease=NativeRefreshLocks.TryAcquire(Path.GetDirectoryName(native.PathFor("claude"))!,root);
+            await using var lease=NativeRefreshLocks.TryAcquire(Path.GetDirectoryName(CredentialPath(config))!,root);
             if(lease is null||!lease.Verify())throw new QueryException(FailureKind.AuthRenewalBusy);
             // Both native locks are held before the authoritative re-read.
-            if(!Matches(Hash(document)))throw new QueryException(FailureKind.AuthRenewalBusy);
+            if(!Matches(config,Hash(document)))throw new QueryException(FailureKind.AuthRenewalBusy);
             var scopes=node["scopes"]?.AsArray().Select(x=>x?.GetValue<string>()??"").ToArray()??[];
             if(scopes.Length==0||scopes.Any(s=>s.Length==0||s.Length>200||s.Any(c=>char.IsControl(c)||char.IsWhiteSpace(c))))throw new QueryException(FailureKind.AuthRenewalRequired);
             var clientId=Text(node,"clientId");if(clientId.Length==0)clientId=ClientId;
             if(!Guid.TryParse(clientId,out _))throw new QueryException(FailureKind.CredentialUnreadable);
-            journal=new(1,config.SlotId,config.NativeIdentity!,Hash(document),Hash(refresh),"posting",null,null,journal?.AccountUuid,journal?.OrganizationUuid);
+            journal=new(2,config.SlotId,config.NativeIdentity!,Hash(document),Hash(refresh),"posting",null,null,journal?.AccountUuid,journal?.OrganizationUuid,CredentialPath:CredentialPath(config));
             await SaveJournal(config,journal);
             State(config,"refreshing");
             using var timeout=CancellationTokenSource.CreateLinkedTokenSource(ct,lease.Compromised);timeout.CancelAfter(TimeSpan.FromSeconds(30));
             var body=JsonSerializer.SerializeToUtf8Bytes(new{grant_type="refresh_token",refresh_token=refresh,client_id=clientId,scope=string.Join(" ",scopes)});
             try
             {
-                if(busy()||!lease.Verify()||!Matches(journal.BaselineHash))throw new BeforePostException();
+                if(!currentBinding(config))throw new QueryException(FailureKind.IdentityChanged);
+                if(busy()||!lease.Verify()||!Matches(config,journal.BaselineHash))throw new BeforePostException();
                 using var request=new HttpRequestMessage(HttpMethod.Post,TokenEndpoint){Content=new ByteArrayContent(body)};
                 request.Content.Headers.ContentType=new("application/json");request.Headers.Accept.Add(new("application/json"));
                 using var response=await http.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,timeout.Token);
@@ -242,7 +267,7 @@ public sealed class NativeClaudeRenewal : IDisposable
                 if(journal is null)
                 {
                     var oauth=(JsonNode.Parse(document) as JsonObject)?["claudeAiOauth"] as JsonObject;
-                    if(oauth is not null)journal=new(1,config.SlotId,config.NativeIdentity!,Hash(document),Hash(Text(oauth,"refreshToken")),"complete",null,config.NativeIdentity,null,null);
+                    if(oauth is not null)journal=new(2,config.SlotId,config.NativeIdentity!,Hash(document),Hash(Text(oauth,"refreshToken")),"complete",null,config.NativeIdentity,null,null,CredentialPath:CredentialPath(config));
                 }
                 if(journal is not null)await SaveJournal(config,journal);
             }
@@ -257,6 +282,8 @@ public sealed class NativeClaudeRenewal : IDisposable
     private sealed class BeforePostException:Exception;
     private async Task<AccountConfig> CommitAsync(AccountConfig config,Journal journal,CancellationToken ct,NativeRefreshLocks? held=null)
     {
+        if(journal.Schema!=2||!string.Equals(journal.CredentialPath,CredentialPath(config),StringComparison.OrdinalIgnoreCase))throw new QueryException(FailureKind.IdentityChanged);
+        if(!currentBinding(config))throw new QueryException(FailureKind.IdentityChanged);
         if(journal.Desired is null||journal.NewIdentity is null||journal.Slot!=config.SlotId||config.NativeIdentity!=journal.NativeIdentity&&config.NativeIdentity!=journal.NewIdentity)throw new QueryException(FailureKind.AuthRenewalUnknown);
         NativeRefreshLocks? acquired=null;
         byte[]? mergedBytes=null;
@@ -265,10 +292,10 @@ public sealed class NativeClaudeRenewal : IDisposable
             if(held is null)
             {
                 if(busy())throw new QueryException(FailureKind.AuthRenewalBusy);
-                acquired=NativeRefreshLocks.TryAcquire(Path.GetDirectoryName(native.PathFor("claude"))!,root);held=acquired;
+                acquired=NativeRefreshLocks.TryAcquire(Path.GetDirectoryName(CredentialPath(config))!,root);held=acquired;
             }
             if(held is null||!held.Verify()||busy())throw new QueryException(FailureKind.AuthRenewalBusy);
-            byte[] current=native.ReadDocument("claude");
+            byte[] current=native.ForAccount(config).ReadDocument("claude");
             try
             {
                 var actual=native.ParseDocument("claude",current,false);
@@ -293,16 +320,17 @@ public sealed class NativeClaudeRenewal : IDisposable
                 }
                 if(!isDesired)
                 {
-                var path=native.PathFor("claude");var temp=path+"."+Guid.NewGuid().ToString("N")+".renewal.tmp";
+                var path=CredentialPath(config);var temp=path+"."+Guid.NewGuid().ToString("N")+".renewal.tmp";
                 try
                 {
                     await using(var stream=new FileStream(temp,FileMode.CreateNew,FileAccess.Write,FileShare.None,4096,FileOptions.WriteThrough))
                     {await stream.WriteAsync(journal.Desired,ct);stream.Flush(true);}
-                    if(!held.Verify()||busy()||!Matches(journal.BaselineHash))throw new QueryException(FailureKind.AuthRenewalUnknown);
+                    if(!currentBinding(config))throw new QueryException(FailureKind.IdentityChanged);
+                    if(!held.Verify()||busy()||!Matches(config,journal.BaselineHash))throw new QueryException(FailureKind.AuthRenewalUnknown);
                     File.Replace(temp,path,null,true);
                 }
                 finally{if(File.Exists(temp))File.Delete(temp);}
-                if(!Matches(Hash(journal.Desired)))throw new QueryException(FailureKind.AuthRenewalUnknown);
+                if(!Matches(config,Hash(journal.Desired)))throw new QueryException(FailureKind.AuthRenewalUnknown);
                 }
             }
             finally{CryptographicOperations.ZeroMemory(current);}
@@ -315,6 +343,7 @@ public sealed class NativeClaudeRenewal : IDisposable
             }
             if(!held.Verify()||busy())throw new QueryException(FailureKind.AuthRenewalBusy);
             var next=await bind(config,config with {NativeIdentity=journal.NewIdentity});
+            if(!string.Equals(CredentialPath(next),journal.CredentialPath,StringComparison.OrdinalIgnoreCase))throw new QueryException(FailureKind.IdentityChanged);
             await SaveJournal(next,journal with {Phase="complete",NativeIdentity=next.NativeIdentity!,BaselineHash=Hash(journal.Desired),Desired=null});
             // A confirmed response may be recovered after its access lifetime.
             // Complete only this known local chain, then renew the confirmed new
@@ -324,8 +353,8 @@ public sealed class NativeClaudeRenewal : IDisposable
         catch(QueryException){throw;}catch(Exception error){ErrorObserver.Report(onError,error);throw new QueryException(FailureKind.AuthRenewalUnknown);}
         finally{if(mergedBytes is not null)CryptographicOperations.ZeroMemory(mergedBytes);if(acquired is not null)await acquired.DisposeAsync();}
     }
-    private bool Matches(string hash)
-    {byte[]? actual=null;try{actual=native.ReadDocument("claude");return Hash(actual)==hash;}catch{return false;}finally{if(actual is not null)CryptographicOperations.ZeroMemory(actual);}}
+    private bool Matches(AccountConfig c,string hash)
+    {byte[]? actual=null;try{actual=native.ForAccount(c).ReadDocument("claude");return Hash(actual)==hash;}catch{return false;}finally{if(actual is not null)CryptographicOperations.ZeroMemory(actual);}}
     private async Task<(string Account,string Organization)> ProfileAsync(string access,CancellationToken ct,CancellationToken compromised=default)
     {
         try

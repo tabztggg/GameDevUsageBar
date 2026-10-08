@@ -6,6 +6,8 @@ using System.Windows.Input;
 using System.Windows.Documents;
 using System.ComponentModel;
 using System.Windows.Interop;
+using System.Windows.Data;
+using System.Windows.Threading;
 using GameDevUsageBar.App.Interop;
 using GameDevUsageBar.App.Presentation;
 using GameDevUsageBar.Core.Presentation;
@@ -19,6 +21,15 @@ public partial class WidgetWindow : Window
     private readonly PresentationPreferencesService preferences;
     private readonly ObservableCollection<CardModel> visibleCards=[];
     private CardModel[] selected=[];
+    private readonly Dictionary<string,FrameworkElement> providerCells=[];
+    private readonly DispatcherTimer hoverDelay=new() {Interval=TimeSpan.FromMilliseconds(350)};
+    private readonly DispatcherTimer hoverDismiss=new() {Interval=TimeSpan.FromMilliseconds(220)};
+    private readonly Border hoverSurface;
+    private readonly ScrollViewer hoverScroll;
+    private string? pendingHoverId,hoverId;
+    private FrameworkElement? pendingHoverTarget;
+    public ProviderAccountsView HoverAccounts {get;}=new() {ShowActions=false};
+    public Popup ProviderHoverPopup {get;}=new() {Placement=PlacementMode.Bottom,AllowsTransparency=true,StaysOpen=true,PopupAnimation=PopupAnimation.None,VerticalOffset=5};
     private HwndSource? source;
     private NativeWindows.Point startPointer;
     private double startLeft,startTop;
@@ -30,12 +41,22 @@ public partial class WidgetWindow : Window
     public WidgetWindow(ProviderStateHub hub,PresentationPreferencesService preferences)
     {
         this.hub=hub;this.preferences=preferences;InitializeComponent();
+        hoverScroll=new ScrollViewer {Content=HoverAccounts,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
+        hoverSurface=new Border {Child=hoverScroll,Padding=new Thickness(12),BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(8)};
+        hoverSurface.SetResourceReference(Border.BackgroundProperty,"PanelBrush");hoverSurface.SetResourceReference(Border.BorderBrushProperty,"EdgeBrush");
+        ProviderHoverPopup.Child=hoverSurface;
+        hoverSurface.MouseEnter+=(_,_)=>hoverDismiss.Stop();
+        hoverSurface.MouseLeave+=(_,_)=>ScheduleHoverDismiss();
+        hoverSurface.MouseLeftButtonUp+=Hover_Click;
+        hoverDelay.Tick+=(_,_)=>{hoverDelay.Stop();if(pendingHoverId is not null && pendingHoverTarget is {IsMouseOver:true})ShowProviderHover(pendingHoverId,pendingHoverTarget);};
+        hoverDismiss.Tick+=(_,_)=>{hoverDismiss.Stop();if(!hoverSurface.IsMouseOver && ProviderHoverPopup.PlacementTarget is not {IsMouseOver:true})HideProviderHover();};
+        IsVisibleChanged+=(_,_)=>{if(!IsVisible)HideProviderHover();};
         NetworkButton.DataContext=hub.Network;
         NetworkButton.ToolTip=new ToolTip {Content=new NetworkUsageView {DataContext=hub.Network,Width=320},Padding=new Thickness(0),BorderThickness=new Thickness(0),Background=System.Windows.Media.Brushes.Transparent,Placement=PlacementMode.Bottom,HasDropShadow=false};
         hub.Changed+=Changed;hub.Network.PropertyChanged+=NetworkChanged;
         SourceInitialized+=(_,_)=> {NativeWindows.NeverActivate(this);source=HwndSource.FromHwnd(NativeWindows.Handle(this));source?.AddHook(WindowMessage);Reposition();};
         Closing+=(_,e)=> {if(!AllowClose){e.Cancel=true;Hide();preferences.Update(p=>p with {Widget=p.WidgetOrDefault with {Visible=false}});}};
-        Closed+=(_,_)=> {hub.Changed-=Changed;hub.Network.PropertyChanged-=NetworkChanged;source?.RemoveHook(WindowMessage);};
+        Closed+=(_,_)=> {HideProviderHover();hub.Changed-=Changed;hub.Network.PropertyChanged-=NetworkChanged;source?.RemoveHook(WindowMessage);};
         Changed();
     }
     private IntPtr WindowMessage(IntPtr hwnd,int message,IntPtr wParam,IntPtr lParam,ref bool handled)
@@ -69,19 +90,6 @@ public partial class WidgetWindow : Window
             if(source is not null)NativeWindows.MoveToMonitor(this,target);
             var scale=source is null ? 1 : NativeWindows.Scale(this);
             var maxWidth=Math.Min(1100,target.Work.Width/scale);
-            visibleCards.Clear();Cards.Children.Clear();
-            foreach(var model in selected){
-                var cell=(FrameworkElement)((DataTemplate)FindResource("ProviderTemplate")).LoadContent();
-                // Set the measured content before layout: inherited DataContext bindings
-                // can otherwise settle after the window has already chosen its width.
-                var button=(Button)((Border)cell).Child;
-                var content=(StackPanel)button.Content;
-                ((Image)content.Children[0]).Source=model.IconSource;
-                var label=(TextBlock)content.Children[1];((Run)label.Inlines.FirstInline!).Text=model.BarNumber;((Run)label.Inlines.LastInline!).Text=model.BarUnit;
-                cell.DataContext=model;button.Tag=model.Id;button.ToolTip=UsageToolTip.Create(model);
-                System.Windows.Automation.AutomationProperties.SetName(button,model.BarAccessibleText);
-                Cards.Children.Add(cell);visibleCards.Add(model);
-            }
             ((TextBlock)EmptyMessage.Content).Text=L.T("Set up sources");
             // The button's template can retain its previous desired width until the
             // next layout pass. Give the localized empty label a measured box now.
@@ -90,13 +98,70 @@ public partial class WidgetWindow : Window
             EmptyMessage.Width=Math.Ceiling(emptyText.WidthIncludingTrailingWhitespace)+12;
             EmptyMessage.Visibility=selected.Length==0 ? Visibility.Visible : Visibility.Collapsed;
             SizeNetwork();
-            var desired=MeasureRow();
+            // Retain the actual provider buttons during background account updates.
+            // Replacing the hover anchor would close a readable, scrollable account list.
+            var baseWidth=MeasureRow()-Cards.DesiredSize.Width;
+            var next=selected.ToList();
+            var cells=next.Select(ProviderCell).ToList();
+            foreach(var cell in cells)cell.Measure(new Size(double.PositiveInfinity,BarHeight-2));
+            var desired=baseWidth+cells.Sum(cell=>Math.Ceiling(cell.DesiredSize.Width));
             // Overflow removes complete cells, never part of a numeric value.
-            while(desired>maxWidth && visibleCards.Count>0){Cards.Children.RemoveAt(Cards.Children.Count-1);visibleCards.RemoveAt(visibleCards.Count-1);desired=MeasureRow();}
+            while(desired>maxWidth && next.Count>0){desired-=Math.Ceiling(cells[^1].DesiredSize.Width);cells.RemoveAt(cells.Count-1);next.RemoveAt(next.Count-1);}
+            if(!visibleCards.SequenceEqual(next)){
+                if(hoverId is not null && !next.Any(model=>model.Id==hoverId))HideProviderHover();
+                Cards.Children.Clear();visibleCards.Clear();
+                foreach(var cell in cells)Cards.Children.Add(cell);
+                foreach(var model in next)visibleCards.Add(model);
+            }
+            desired=MeasureRow();
             var width=Math.Min(maxWidth,Math.Max(110,desired));
             Width=width;Height=Math.Min(BarHeight,target.Work.Height/scale);
             if(source is not null){var box=Placement.ResolveBar(p.Placement,monitors,scale,width,BarHeight);NativeWindows.Move(this,box.LeftPx,box.TopPx);NativeWindows.SetTopmost(this,p.Topmost);}
         } finally {reflow=applying=false;}
+    }
+    private FrameworkElement ProviderCell(CardModel model)
+    {
+        if(providerCells.TryGetValue(model.Id,out var existing))return existing;
+        var cell=(FrameworkElement)((DataTemplate)FindResource("ProviderTemplate")).LoadContent();
+        var button=(Button)((Border)cell).Child;var content=(StackPanel)button.Content;
+        ((Image)content.Children[0]).SetBinding(Image.SourceProperty,new Binding(nameof(CardModel.IconSource)){Source=model});
+        var label=(TextBlock)content.Children[1];
+        ((Run)label.Inlines.FirstInline!).SetBinding(Run.TextProperty,new Binding(nameof(CardModel.BarNumber)){Source=model,Mode=BindingMode.OneWay});
+        ((Run)label.Inlines.LastInline!).SetBinding(Run.TextProperty,new Binding(nameof(CardModel.BarUnit)){Source=model,Mode=BindingMode.OneWay});
+        cell.DataContext=model;button.Tag=model.Id;
+        button.SetBinding(System.Windows.Automation.AutomationProperties.NameProperty,new Binding(nameof(CardModel.BarAccessibleText)){Source=model});
+        // The hover list is a retained Popup, so the pointer can enter and scroll it.
+        button.MouseEnter+=(_,_)=>ScheduleHover(model.Id,button);
+        button.MouseLeave+=(_,_)=>{hoverDelay.Stop();ScheduleHoverDismiss();};
+        providerCells.Add(model.Id,cell);return cell;
+    }
+    private void ScheduleHover(string id,FrameworkElement target)
+    {
+        hoverDismiss.Stop();pendingHoverId=id;pendingHoverTarget=target;
+        if(ProviderHoverPopup.IsOpen)ShowProviderHover(id,target);
+        else {hoverDelay.Stop();hoverDelay.Start();}
+    }
+    private void ScheduleHoverDismiss(){hoverDismiss.Stop();hoverDismiss.Start();}
+    public void ShowProviderHover(string providerId,FrameworkElement target)
+    {
+        if(!hub.Models.Any(model=>model.Id==providerId))return;
+        var providerChanged=hoverId!=providerId;
+        hoverDelay.Stop();hoverDismiss.Stop();hoverId=providerId;
+        HoverAccounts.SetProvider(hub,providerId);
+        if(providerChanged)hoverScroll.ScrollToTop();
+        var point=target.PointToScreen(new Point(target.ActualWidth/2,target.ActualHeight));
+        var monitor=NativeWindows.Monitors().FirstOrDefault(m=>point.X>=m.Bounds.Left&&point.X<m.Bounds.Right&&point.Y>=m.Bounds.Top&&point.Y<m.Bounds.Bottom)??NativeWindows.Monitors().First();
+        var scale=source is null?1:NativeWindows.Scale(this);
+        hoverSurface.Width=Math.Max(1,Math.Min(500,monitor.Work.Width/scale-16));
+        hoverScroll.MaxHeight=Math.Max(1,Math.Min(680,monitor.Work.Height/scale-16)-30);
+        ProviderHoverPopup.PlacementTarget=target;ProviderHoverPopup.IsOpen=true;
+    }
+    public void HideProviderHover(){hoverDelay.Stop();hoverDismiss.Stop();pendingHoverId=hoverId=null;pendingHoverTarget=null;ProviderHoverPopup.IsOpen=false;}
+    private void Hover_Click(object sender,MouseButtonEventArgs e)
+    {
+        for(DependencyObject? element=e.OriginalSource as DependencyObject;element is not null && element!=hoverSurface;element=element is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D?System.Windows.Media.VisualTreeHelper.GetParent(element):LogicalTreeHelper.GetParent(element))
+            if(element is ScrollBar or Thumb or RepeatButton)return;
+        if(hoverId is {} id){HideProviderHover();e.Handled=true;ProviderRequested?.Invoke(id);}
     }
     private void NetworkChanged(object? sender,PropertyChangedEventArgs e){if(!reflow&&SizeNetwork())Reposition();}
     private bool SizeNetwork(){
@@ -107,7 +172,7 @@ public partial class WidgetWindow : Window
         if(Math.Abs(NetworkButton.Width-width)<1)return false;NetworkButton.Width=width;return true;
     }
     private double MeasureRow(){Cards.InvalidateMeasure();ValuesRow.InvalidateMeasure();BarRow.InvalidateMeasure();BarRow.Measure(new Size(double.PositiveInfinity,BarHeight-2));return Math.Ceiling(BarRow.DesiredSize.Width)+12;}
-    private void Provider_Click(object sender,RoutedEventArgs e){if(sender is Button {Tag:string id})ProviderRequested?.Invoke(id);}
+    private void Provider_Click(object sender,RoutedEventArgs e){HideProviderHover();if(sender is Button {Tag:string id})ProviderRequested?.Invoke(id);}
     private void Network_Click(object sender,RoutedEventArgs e)=>NetworkRequested?.Invoke();
     private void Settings_Click(object sender,RoutedEventArgs e)=>SettingsRequested?.Invoke();
     private void More_Click(object sender,RoutedEventArgs e)=>CreateMoreMenu().IsOpen=true;
@@ -115,7 +180,9 @@ public partial class WidgetWindow : Window
     {
         var menu=new ContextMenu {PlacementTarget=MoreButton,Placement=PlacementMode.Bottom};
         foreach(var model in selected.Except(visibleCards)){
-            var id=model.Id;var item=new MenuItem {Header=model.Name+" · "+model.BarValue,ToolTip=UsageToolTip.Create(model)};item.Click+=(_,_)=>ProviderRequested?.Invoke(id);menu.Items.Add(item);
+            var id=model.Id;var item=new MenuItem {Header=model.Name+" · "+model.BarValue};
+            item.MouseEnter+=(_,_)=>ScheduleHover(id,item);item.MouseLeave+=(_,_)=>{hoverDelay.Stop();ScheduleHoverDismiss();};
+            item.Click+=(_,_)=>{HideProviderHover();ProviderRequested?.Invoke(id);};menu.Items.Add(item);
         }
         if(menu.Items.Count>0)menu.Items.Add(new Separator());
         Add("Display settings…",()=>SettingsRequested?.Invoke());
@@ -129,6 +196,7 @@ public partial class WidgetWindow : Window
     private void Drag_Down(object sender,MouseButtonEventArgs e)
     {
         if(preferences.Current.WidgetOrDefault.Locked || applying)return;
+        HideProviderHover();
         NativeWindows.GetCursorPos(out startPointer);var bounds=NativeWindows.Bounds(this);startLeft=bounds.Left;startTop=bounds.Top;
         gesture=true;((UIElement)sender).CaptureMouse();e.Handled=true;
     }

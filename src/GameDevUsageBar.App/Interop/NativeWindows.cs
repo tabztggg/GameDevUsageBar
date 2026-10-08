@@ -79,7 +79,7 @@ public static class NativeWindows
         if(!window.IsVisible && Forms.Screen.FromHandle(Handle(window)).DeviceName!=screen.DeviceName)
             Move(window, screen.WorkingArea.Left + 8, screen.WorkingArea.Top + 8);
         var scale = Scale(window);
-        var width = Math.Min(400, screen.WorkingArea.Width / scale);
+        var width = Math.Min(window is TrayPopupWindow popup ? popup.DesiredPopupWidth : 400, screen.WorkingArea.Width / scale);
         var maxHeight = Math.Min(680, screen.WorkingArea.Height / scale);
         if(window is TrayPopupWindow panel)panel.FitToWorkArea(width,maxHeight);
         else {window.Width=width;window.Height=maxHeight;}

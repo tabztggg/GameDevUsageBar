@@ -16,6 +16,8 @@ try {
   & $sdk run --project tests\GameDevUsageBar.Tests -c Release --no-build
   if($LASTEXITCODE -ne 0){throw 'Behavior checks failed.'}
   if($UiChecks){
+    & $sdk run --project tests\GameDevUsageBar.AppTests -c Release --no-build -- --provider-hover
+    if($LASTEXITCODE -ne 0){throw 'Provider hover account-panel integration checks failed.'}
     & $sdk run --project tests\GameDevUsageBar.AppTests -c Release --no-build -- --footer-account-switch
     if($LASTEXITCODE -ne 0){throw 'Footer account-switch integration checks failed.'}
     & $sdk run --project tests\GameDevUsageBar.AppTests -c Release --no-build -- --popup-positioning
@@ -24,6 +26,8 @@ try {
     if($LASTEXITCODE -ne 0){throw 'WPF/Win32 integration checks failed.'}
     & $sdk run --project tests\GameDevUsageBar.AppTests -c Release --no-build -- --multi-account
     if($LASTEXITCODE -ne 0){throw 'Multi-account and native-auth integration checks failed.'}
+    & $sdk run --project tests\GameDevUsageBar.AppTests -c Release --no-build -- --claude-account-login
+    if($LASTEXITCODE -ne 0){throw 'Independent Claude account login integration checks failed.'}
     & $sdk run --project tests\GameDevUsageBar.AppTests -c Release --no-build -- --runtime-lifecycle
     if($LASTEXITCODE -ne 0){throw 'Runtime lifecycle and diagnostics checks failed.'}
   }
@@ -38,7 +42,7 @@ try {
     $apiFolder=Join-Path $published 'api';New-Item -ItemType Directory -Path $apiFolder -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $projectRoot 'QUOTA-API.md'),(Join-Path $projectRoot 'QUOTA-API.zh-CN.md'),(Join-Path $projectRoot 'tools/Get-GameDevQuota.ps1') -Destination $apiFolder -Force
     $launchFolder=Join-Path $published 'tools';New-Item -ItemType Directory -Path $launchFolder -Force | Out-Null
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'tools/start-installed.ps1') -Destination $launchFolder -Force
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'tools/start-installed.ps1'),(Join-Path $projectRoot 'tools/Start-ClaudeAccountLogin.ps1') -Destination $launchFolder -Force
     foreach($notice in @('LICENSE.txt','THIRD-PARTY-NOTICES.md')) {
       $noticePath=Join-Path $projectRoot $notice
       if(Test-Path -LiteralPath $noticePath){Copy-Item -LiteralPath $noticePath -Destination $published -Force}

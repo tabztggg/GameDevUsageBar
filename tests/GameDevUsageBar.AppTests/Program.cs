@@ -33,7 +33,7 @@ internal static class Program
         SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext());
         app.Dispatcher.BeginInvoke(async () =>
         {
-            if (!args.Any(a => a is "--multi-account" or "--overview-design" or "--compact-design" or "--runtime-lifecycle" or "--popup-positioning" or "--footer-account-switch"))
+            if (!args.Any(a => a is "--multi-account" or "--overview-design" or "--compact-design" or "--runtime-lifecycle" or "--popup-positioning" or "--footer-account-switch" or "--claude-account-login" or "--provider-hover"))
             {
                 await RunAsync(app, args.Contains("--interactive"));
                 return;
@@ -41,9 +41,13 @@ internal static class Program
             try
             {
                 var qa = Environment.GetEnvironmentVariable("GAMEDEVUSAGEBAR_QA_ROOT")
-                    ?? Path.Combine(Path.GetTempPath(), "WorkBuddy-Tasks", "work", "gamedevusagebar-multiaccount-20261004", "workspace");
+                    ?? (args.Contains("--provider-hover")
+                        ? Path.Combine(Path.GetTempPath(), "WorkBuddy-Tasks", "work", "gamedevusagebar-provider-hover-20261007", "workspace", "verification")
+                        : Path.Combine(Path.GetTempPath(), "WorkBuddy-Tasks", "work", "gamedevusagebar-multiaccount-20261004", "workspace"));
                 Directory.CreateDirectory(qa);
-                if (args.Contains("--footer-account-switch")) await FooterAccountSwitchChecks.Run(qa);
+                if (args.Contains("--provider-hover")) await ProviderHoverChecks.Run(qa);
+                else if (args.Contains("--claude-account-login")) await ClaudeAccountUiChecks.Run(qa);
+                else if (args.Contains("--footer-account-switch")) await FooterAccountSwitchChecks.Run(qa);
                 else if (args.Contains("--popup-positioning")) await PopupPositionChecks.Run(qa);
                 else if (args.Contains("--runtime-lifecycle")){
                     await RuntimeLifecycleChecks.Run(qa);
@@ -53,6 +57,7 @@ internal static class Program
                 {
                     await MultiAccountUiChecks.Run(qa);
                     await NativeHostChecks.Run(qa);
+                    await ClaudeAccountUiChecks.Run(qa);
                 }
                 else if (args.Contains("--overview-design")) await OverviewDesignChecks.Run(qa);
                 else
@@ -204,7 +209,7 @@ internal static class Program
                 var settingsWindow=app.Windows.OfType<DisplaySettingsWindow>().Single();
                 Assert(settingsWindow.Owner==overview && overview.IsVisible && !surfaces.Panel.IsVisible,"wrong dialog handoff");
                 settingsWindow.Close();
-                surfaces.Panel.SelectProvider("demo");Assert(((ItemsControl)surfaces.Panel.FindName("Cards")).Items.Count==1,"selected-provider detail missing");
+                surfaces.Panel.SelectProvider("demo");Assert(((ProviderAccountsView)surfaces.Panel.FindName("ProviderAccounts")).AccountModels.Count==1,"selected-provider detail missing");
                 surfaces.Panel.SelectProvider(null);return Task.CompletedTask;
             });
             await Check("Recovered placement does not replace preferred monitor coordinates",async ()=> {
