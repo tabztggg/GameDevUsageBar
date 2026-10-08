@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -228,6 +229,51 @@ internal static class ProviderHoverChecks
                 Assert(accountFiles.SequenceEqual(before.Where(p=>!Path.GetFileName(p.Key).StartsWith("presentation.json",StringComparison.Ordinal)).OrderBy(p=>p.Key)),"Actual hover rewrote account data");
                 Assert(adapters.Sum(a=>a.Calls.Values.Sum())==calls&&host.Queries.Events.Count==0,"Actual hover requested provider usage");
                 foreach(var id in selected.Keys)Assert(host.GetActiveAccount(id).SlotId==selected[id],"Actual hover changed account selection");
+            });
+            await Check("Closing a menu hover owner safely dismisses its popup and disconnected targets are refused",async()=>{
+                var widget=new WidgetWindow(hub,preferences){ShowActivated=false};ContextMenu? menu=null;
+                try
+                {
+                    widget.Show();await Idle();widget.UpdateLayout();
+                    var disconnected=new Button{Content="Disconnected fixture"};
+                    Assert(PresentationSource.FromVisual(disconnected) is null,"Disconnected target fixture unexpectedly has a native presentation source");
+                    var foreground=GetForegroundWindow();widget.ShowProviderHover("tripo",disconnected);await Idle();
+                    Assert(!widget.ProviderHoverPopup.IsOpen&&GetForegroundWindow()==foreground,"Disconnected target opened or activated a hover popup");
+                    menu=widget.CreateMoreMenu();var target=new MenuItem{Header="Synthetic provider hover owner"};menu.Items.Insert(0,target);
+                    var watch=Stopwatch.StartNew();var lifecycle=new List<object>();
+                    void Observe(string stage)
+                    {
+                        lifecycle.Add(new{stage,elapsed_ms=watch.ElapsedMilliseconds,menu_open=menu.IsOpen,menu_visible=menu.IsVisible,
+                            owner_visible=target.IsVisible,owner_has_presentation_source=PresentationSource.FromVisual(target) is not null,
+                            popup_open=widget.ProviderHoverPopup.IsOpen,provider=widget.HoverAccounts.ProviderId,
+                            popup_owner_is_menu_item=ReferenceEquals(widget.ProviderHoverPopup.PlacementTarget,target),menu_contains_owner=menu.Items.Contains(target)});
+                        File.WriteAllText(Path.Combine(root,"menu-owner-lifecycle.json"),JsonSerializer.Serialize(lifecycle,new JsonSerializerOptions{WriteIndented=true}));
+                    }
+                    menu.AddHandler(ContextMenu.OpenedEvent,new RoutedEventHandler((_,_)=>Observe("menu Opened event")),true);
+                    menu.AddHandler(ContextMenu.ClosedEvent,new RoutedEventHandler((_,_)=>Observe("menu Closed event")),true);
+                    menu.IsOpen=true;await Idle();
+                    Assert(target.IsVisible&&PresentationSource.FromVisual(target) is not null,"Menu owner fixture was not connected and visible");
+                    foreground=GetForegroundWindow();widget.ShowProviderHover("tripo",target);await Idle();
+                    Observe("provider hover opened");
+                    Assert(widget.ProviderHoverPopup.IsOpen&&widget.HoverAccounts.ProviderId=="tripo","Connected menu owner did not open its provider hover");
+                    Assert(GetForegroundWindow()==foreground,"Hover stole activation from its open menu owner");
+                    AssertHoverFrame(widget,"tripo / synthetic menu owner",Path.Combine(root,"menu-owner-hover-geometry.json"));
+                    menu.IsOpen=false;Observe("menu IsOpen set false");await Idle();widget.Reposition();Localizer.SetLanguage("en-US");await Idle();Observe("after reposition and language update");
+                    // IsVisible and its native source can survive IsOpen=false
+                    // while WPF closes the menu. Refit must refuse that closing
+                    // owner immediately, independently of the later Closed event.
+                    Assert(!widget.ProviderHoverPopup.IsOpen,"A closing menu retained its provider popup after refit: "+JsonSerializer.Serialize(lifecycle));
+                    foreground=GetForegroundWindow();widget.ShowProviderHover("tripo",disconnected);widget.Reposition();await Idle();
+                    Assert(!widget.ProviderHoverPopup.IsOpen&&GetForegroundWindow()==foreground,"A later disconnected target resurrected or activated the menu hover");
+                    // Closing an unrelated menu must not dismiss an existing
+                    // hover whose retained anchor belongs to the floating bar.
+                    menu.IsOpen=true;await Idle();var barOwner=Visuals<Button>(widget).Single(button=>button.DataContext is CardModel model&&model.Id=="codex");
+                    widget.ShowProviderHover("codex",barOwner);await Idle();menu.IsOpen=false;await Idle();Observe("unrelated menu close after idle");
+                    Assert(widget.ProviderHoverPopup.IsOpen&&widget.HoverAccounts.ProviderId=="codex","Unrelated menu closure dismissed a valid floating-bar anchor");
+                    widget.HideProviderHover();
+                }
+                finally{if(menu is not null)menu.IsOpen=false;widget.AllowClose=true;widget.Close();await Idle();}
+                Pure(host,adapters,before,calls,selected,states);
             });
             await Check("Actual native hover fits every monitor work area at all four widget corners",async()=>{
                 var original=preferences.Current.WidgetOrDefault;

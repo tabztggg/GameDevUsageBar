@@ -19,16 +19,20 @@ small floating-bar icons, expanded details, dark menus and background opacity.
 Screenshot values and account labels are synthetic.
 
 Local release verification passed 192 behavior checks, 22 WPF/Win32 checks
-plus teardown, 10 footer account-switch checks, 10 provider-hover checks,
+plus teardown, 10 footer account-switch checks,
 8 visible popup-position checks, the multiple-account UI suite and 7
 native-account host checks. The Claude-account UI suite passed 13 checks.
 The runtime suite passed 8 exit/failure scenarios and the diagnostic-export
 checks. Overview, compact, strip and transparency suites passed in English
-and Chinese. Provider-hover fixtures cover one, two, five and six accounts,
+and Chinese. All 11 provider-hover checks passed, including overflow-menu
+dismissal. Provider-hover fixtures cover one, two, five and six accounts,
 shared hover/click details, per-slot actions and independent error states.
 Native hover checks cover all four corners of each available monitor; 36
 placement cases cover small work areas, negative origins and 100/125/150% DPI.
 The custom popup placement uses the work area, including taskbar exclusion.
+Hover attached to an overflow menu dismisses when that menu closes;
+disconnected anchors are refused. 溢出菜单关闭时，其悬停面板同时关闭；
+拒绝使用已脱离界面的定位元素。
 
 The compact empty-panel regression now waits for the existing deferred WPF
 refit before checking the original height limit. A render remains available

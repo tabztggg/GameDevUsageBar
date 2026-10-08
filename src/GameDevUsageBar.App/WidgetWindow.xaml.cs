@@ -28,6 +28,7 @@ public partial class WidgetWindow : Window
     private readonly ScrollViewer hoverScroll;
     private string? pendingHoverId,hoverId;
     private FrameworkElement? pendingHoverTarget;
+    private ContextMenu? hoverOwnerMenu;
     public ProviderAccountsView HoverAccounts {get;}=new() {ShowActions=false};
     public Popup ProviderHoverPopup {get;}=new() {Placement=PlacementMode.Custom,AllowsTransparency=true,StaysOpen=true,PopupAnimation=PopupAnimation.None};
     private HwndSource? source;
@@ -147,15 +148,27 @@ public partial class WidgetWindow : Window
     private void ScheduleHoverDismiss(){hoverDismiss.Stop();hoverDismiss.Start();}
     public void ShowProviderHover(string providerId,FrameworkElement target)
     {
-        if(!hub.Models.Any(model=>model.Id==providerId))return;
+        var ownerMenu=ProviderHoverOwningMenu(target);
+        if(!hub.Models.Any(model=>model.Id==providerId) || !ProviderHoverTargetAvailable(target) || ownerMenu is {IsOpen:false})return;
         var providerChanged=hoverId!=providerId;
         hoverDelay.Stop();hoverDismiss.Stop();hoverId=providerId;
         HoverAccounts.SetProvider(hub,providerId);
         if(providerChanged)hoverScroll.ScrollToTop();
+        hoverOwnerMenu=ownerMenu;
         ProviderHoverPopup.PlacementTarget=target;
         FitProviderHover(target);
         ProviderHoverPopup.IsOpen=true;
         RefitProviderHover();
+    }
+    private static bool ProviderHoverTargetAvailable(FrameworkElement target)=>target.IsVisible && PresentationSource.FromVisual(target) is not null;
+    private static ContextMenu? ProviderHoverOwningMenu(FrameworkElement target)
+    {
+        DependencyObject? container=target;
+        while(container is MenuItem item){
+            container=ItemsControl.ItemsControlFromItemContainer(item)??LogicalTreeHelper.GetParent(item);
+            if(container is ContextMenu menu)return menu;
+        }
+        return null;
     }
     private static MonitorInfo ProviderHoverMonitor(FrameworkElement target)
     {
@@ -186,13 +199,14 @@ public partial class WidgetWindow : Window
     }
     private CustomPopupPlacement[] PlaceProviderHover(Size popupSize,Size targetSize,Point offset)
     {
-        if(ProviderHoverPopup.PlacementTarget is not FrameworkElement target)return [];
+        if(ProviderHoverPopup.PlacementTarget is not FrameworkElement target || !ProviderHoverTargetAvailable(target) || hoverOwnerMenu is {IsOpen:false})return [];
         var dpi=System.Windows.Media.VisualTreeHelper.GetDpi(target);
         return [ConstrainProviderHoverPlacement(popupSize,targetSize,target.PointToScreen(new Point()),dpi,ProviderHoverMonitor(target).Work)];
     }
     private void RefitProviderHover()
     {
         if(!ProviderHoverPopup.IsOpen || ProviderHoverPopup.PlacementTarget is not FrameworkElement target)return;
+        if(!ProviderHoverTargetAvailable(target) || hoverOwnerMenu is {IsOpen:false}){HideProviderHover();return;}
         FitProviderHover(target);
         // WPF does not reposition an open Popup when only its owner window
         // moves. A placement-property invalidation reruns our work-area clamp
@@ -203,7 +217,7 @@ public partial class WidgetWindow : Window
         ProviderHoverPopup.HorizontalOffset=offset+1;
         ProviderHoverPopup.HorizontalOffset=offset;
     }
-    public void HideProviderHover(){hoverDelay.Stop();hoverDismiss.Stop();pendingHoverId=hoverId=null;pendingHoverTarget=null;ProviderHoverPopup.IsOpen=false;}
+    public void HideProviderHover(){hoverDelay.Stop();hoverDismiss.Stop();pendingHoverId=hoverId=null;pendingHoverTarget=null;ProviderHoverPopup.IsOpen=false;hoverOwnerMenu=null;}
     private void Hover_Click(object sender,MouseButtonEventArgs e)
     {
         for(DependencyObject? element=e.OriginalSource as DependencyObject;element is not null && element!=hoverSurface;element=element is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D?System.Windows.Media.VisualTreeHelper.GetParent(element):LogicalTreeHelper.GetParent(element))
@@ -231,6 +245,15 @@ public partial class WidgetWindow : Window
             item.MouseEnter+=(_,_)=>ScheduleHover(id,item);item.MouseLeave+=(_,_)=>{hoverDelay.Stop();ScheduleHoverDismiss();};
             item.Click+=(_,_)=>{HideProviderHover();ProviderRequested?.Invoke(id);};menu.Items.Add(item);
         }
+        menu.AddHandler(ContextMenu.ClosedEvent,new RoutedEventHandler((_,_)=>{
+            // A menu owns a temporary HWND. Do not keep a hover anchored to its
+            // disconnected item, or let a delayed hover outlive that menu. A
+            // separate hover already moved back onto the bar stays untouched.
+            if(ReferenceEquals(hoverOwnerMenu,menu) || ProviderHoverPopup.PlacementTarget is MenuItem owner && menu.Items.Contains(owner))HideProviderHover();
+            else if(pendingHoverTarget is MenuItem pending && menu.Items.Contains(pending)){
+                hoverDelay.Stop();pendingHoverId=null;pendingHoverTarget=null;
+            }
+        }),true);
         if(menu.Items.Count>0)menu.Items.Add(new Separator());
         Add("Display settings…",()=>SettingsRequested?.Invoke());
         Add("Always on top",()=>Top_Click(this,new RoutedEventArgs()),preferences.Current.WidgetOrDefault.Topmost);
